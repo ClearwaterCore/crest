@@ -1,15 +1,15 @@
 [submodule "build-infra"]
 	path = build-infra
-	url = git@github.com:Metaswitch/clearwater-build-infra.git
+	url = git@github.com:ClearwaterCore/clearwater-build-infra.git
 [submodule "modules/pure-sasl"]
 	path = modules/pure-sasl
 	url = git://github.com/thobbs/pure-sasl.git
 [submodule "modules/common"]
 	path = modules/common
-	url = git@github.com:Metaswitch/python-common.git
+	url = git@github.com:ClearwaterCore/python-common.git
 [submodule "modules/telephus"]
 	path = modules/telephus
-	url = git@github.com:Metaswitch/Telephus.git
+	url = git@github.com:ClearwaterCore/Telephus.git
 [submodule "modules/sdp"]
 	path = modules/sdp
-	url = git@github.com:Metaswitch/sdp.git
+	url = git@github.com:ClearwaterCore/sdp.git
