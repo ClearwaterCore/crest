@@ -38,6 +38,7 @@
 import os
 import argparse
 import logging
+import syslog
 from sys import executable
 from socket import AF_INET
 
@@ -110,6 +111,7 @@ def standalone():
     else:
         # Cyclone
         _log.info("Going to listen for HTTP on port %s", settings.HTTP_PORT)
+        syslog.syslog(syslog.LOG_INFO, "Listening for HTTP on port %s" % (settings.HTTP_PORT))
         http_port = reactor.listenTCP(settings.HTTP_PORT, application, interface=settings.LOCAL_IP)
 
         for process_id in range(1, args.worker_processes):
