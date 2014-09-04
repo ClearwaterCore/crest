@@ -57,6 +57,3 @@ def configure_logging(task_id):
     handler.setLevel(settings.LOG_LEVEL)
     root_log.addHandler(handler)
     print "Logging to %s" % log_file
-
-    syslog.openlog(ident="crest", logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL6)
-    syslog.syslog('Crest processing initiated...')
