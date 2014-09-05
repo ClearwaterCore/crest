@@ -52,6 +52,10 @@ from metaswitch.common import utils
 
 _log = logging.getLogger("crest")
 
+def shutdown_before():
+    _log.info("Shutting down statistics")
+    api.base.shutdownStats()
+
 def create_application():
     app_settings = {
         "gzip": True,
@@ -102,6 +106,12 @@ def standalone():
 
     # Setup logging
     logging_config.configure_logging(args.process_id)
+    logging_config.configure_syslog()
+
+    # Uncomment the following to see twisted logs
+    #from twisted.python import log
+    #observer = log.PythonLoggingObserver()
+    #observer.start()
 
     # setup accumulators and counters for statistics gathering
     api.base.setupStats(args.process_id, args.worker_processes)
@@ -110,8 +120,7 @@ def standalone():
         reactor.adoptStreamPort(args.shared_http_fd, AF_INET, application)
     else:
         # Cyclone
-        _log.info("Going to listen for HTTP on port %s", settings.HTTP_PORT)
-        syslog.syslog(syslog.LOG_INFO, "Listening for HTTP on port %s" % (settings.HTTP_PORT))
+        _log.info("Listening for HTTP on port %s", settings.HTTP_PORT)
         http_port = reactor.listenTCP(settings.HTTP_PORT, application, interface=settings.LOCAL_IP)
 
         for process_id in range(1, args.worker_processes):
@@ -120,6 +129,8 @@ def standalone():
                                  "--process-id", str(process_id)],
                                  childFDs={0: 0, 1: 1, 2: 2, http_port.fileno(): http_port.fileno()},
                                  env = os.environ)
+
+    reactor.addSystemEventTrigger('before', 'shutdown', shutdown_before)
 
     # Kick off the reactor to start listening on configured ports
     reactor.run()

@@ -57,3 +57,20 @@ def configure_logging(task_id):
     handler.setLevel(settings.LOG_LEVEL)
     root_log.addHandler(handler)
     print "Logging to %s" % log_file
+
+class LogHandler(logging.Handler): # Inherit from logging.Handler
+        def __init__(self):
+                # run the regular Handler __init__
+                logging.Handler.__init__(self)
+        def emit(self, record):
+                # record.message is the log message
+                #print record
+                print self.format(record)
+                syslog.syslog(record.levelno, self.format(record))
+
+def configure_syslog():
+    syslog.openlog(settings.LOG_FILE_PREFIX, logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL6)
+    syslogHandler = LogHandler()
+    syslogHandler.setFormatter(logging.Formatter('%(levelname)1.1s %(module)s:%(lineno)d %(process)d:%(thread)d] %(message)s'))
+    syslogHandler.setLevel(settings.LOG_LEVEL)
+    logging.getLogger().addHandler(syslogHandler)
