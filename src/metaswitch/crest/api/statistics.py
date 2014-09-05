@@ -37,6 +37,27 @@ import logging
 import abc
 import base
 
+import ctypes, os
+
+CLOCK_MONOTONIC_RAW = 4 # see <linux/time.h>
+
+class timespec(ctypes.Structure):
+    _fields_ = [
+        ('tv_sec', ctypes.c_long),
+        ('tv_nsec', ctypes.c_long)
+    ]
+
+librt = ctypes.CDLL('librt.so.1', use_errno=True)
+clock_gettime = librt.clock_gettime
+clock_gettime.argtypes = [ctypes.c_int, ctypes.POINTER(timespec)]
+
+def monotonic_time():
+    t = timespec()
+    if clock_gettime(CLOCK_MONOTONIC_RAW , ctypes.pointer(t)) != 0:
+        errno_ = ctypes.get_errno()
+        raise OSError(errno_, os.strerror(errno_))
+    return t.tv_sec + t.tv_nsec * 1e-9
+
 # Collect stats every 5 seconds
 STATS_PERIOD = 5 
 _log = logging.getLogger("crest.api")
@@ -51,7 +72,7 @@ class Collector(object):
 
     def __init__(self, stat_name):
         self.stat_name = stat_name
-        self.start_time = time.time()
+        self.start_time = monotonic_time()
 
     @abc.abstractmethod
     def refresh(self):
@@ -85,7 +106,7 @@ class Counter(Collector):
         self.refresh()
 
     def refresh(self):
-        time_difference = time.time() - self.start_time
+        time_difference = monotonic_time() - self.start_time
 
         if time_difference > STATS_PERIOD:
             base.zmq.report([self.current], self.stat_name)
@@ -93,7 +114,7 @@ class Counter(Collector):
 
     def reset(self):
         self.current = 0
-        self.start_time = time.time()
+        self.start_time = monotonic_time()
  
 class Accumulator(Collector):
     """
@@ -123,7 +144,7 @@ class Accumulator(Collector):
         self.refresh()
 
     def refresh(self):
-        time_difference = time.time() - self.start_time
+        time_difference = monotonic_time() - self.start_time
         mean = 0
         variance = 0
 
@@ -143,4 +164,4 @@ class Accumulator(Collector):
         self.sigma_squared = 0
         self.lwm = 0
         self.hwm = 0
-        self.start_time = time.time()
+        self.start_time = monotonic_time()
