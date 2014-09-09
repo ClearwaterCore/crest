@@ -21,7 +21,7 @@ Options:\n\
 error()
 {
     printf "$@"
-    printf "\n"
+    printf "\n\n"
 
     usage
 }
@@ -69,8 +69,14 @@ if [ -z $HTTP_PORT ]; then
 fi
 
 USER=$1
+if [ -z $USER ]; then
+    error "Error: a user (directory number) must be specified!"
+fi
 shift
 DOMAIN=$1
+if [ -z $DOMAIN ]; then
+    error "Error: a domain must be specified!"
+fi
 shift
 
 HSPROV=${LOCAL_IP}:${HTTP_PORT}
