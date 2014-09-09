@@ -1,0 +1,104 @@
+#!/bin/bash
+
+mydir=$(cd `dirname $0`;pwd)
+cwd=$(pwd)
+
+cmdname=$0
+
+usage()
+{
+    printf "\
+Usage: $cmdname [OPTION...] <directory-number> <domain>\n\
+\n\
+Options:\n\
+  -h, --help        display this usage\n"
+
+    printf "\n"
+
+    exit 0
+}
+
+error()
+{
+    printf "$@"
+    printf "\n"
+
+    usage
+}
+
+params="$(getopt -o h -l help --name $cmdname -- "$@")"
+
+if [ $? -ne 0 ]
+then
+    usage
+fi
+
+eval set -- "$params"
+unset params
+
+while true
+do
+    case $1 in
+	--)
+	shift
+	break
+	;;
+        -h|--help)
+        usage
+        ;;
+        *)
+        usage
+        ;;
+    esac
+done
+
+if [ ! /usr/share/clearwater/homestead/src/metaswitch/crest/local_settings.py ]; then
+    error "Error: missing '/usr/share/clearwater/homestead/src/metaswitch/crest/local_settings.py'"
+fi
+
+eval $(python -c 'execfile("/usr/share/clearwater/homestead/src/metaswitch/crest/local_settings.py"); print "LOCAL_IP=%s\nHTTP_PORT=%s\n" % (LOCAL_IP, HTTP_PORT)')
+
+if [ -z $LOCAL_IP ]; then
+    printf "Error: no LOCAL_IP in local_settings!\n"
+    exit 1
+fi
+
+if [ -z $HTTP_PORT ]; then
+    printf "Error: no HTTP_PORT in local_settings!\n"
+    exit 1
+fi
+
+USER=$1
+shift
+DOMAIN=$1
+shift
+
+HSPROV=${LOCAL_IP}:${HTTP_PORT}
+
+impu=$(curl -s http://${HSPROV}/impu/sip:${USER}@${DOMAIN} 2>&1)
+if [[ ${impu:0:1} == "<" ]]; then
+    if [[ "$(curl -s http://${HSPROV}/impi/${USER}@${DOMAIN}/digest)" =~ digest_ha1 ]]; then
+	public_id=sip:${USER}@${DOMAIN}
+
+	service_profile=$(curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|grep "Location:"|awk '{print $2}'|tr '[[:space:]]' ' '|sed -e 's#[[:space:]]##g')
+	iFC=$(curl -s http://${HSPROV}${service_profile}/filter_criteria)
+
+	digest=$(curl -s http://${HSPROV}/impi/${USER}@${DOMAIN}/digest|python -c 'import json,sys;obj=json.load(sys.stdin);print obj["digest_ha1"]' 2>&1)
+
+	echo "HA1 digest:"
+        echo "  $digest"
+	echo "iFC:"
+	(
+	    echo ${iFC}|python -c 'import xml.dom.minidom, sys; print xml.dom.minidom.parse(sys.stdin).toprettyxml()'
+	) 2>&1 | while IFS='' read -r line; do
+	    printf "   %s\n" "$line"
+	done
+    else
+	printf "Error: no IMPI user ${USER}@${DOMAIN}\n"
+	exit 1
+    fi
+else
+    printf "Error: no IMPU user 'sip:${USER}@${DOMAIN}'\n"
+    exit 1
+fi
+
