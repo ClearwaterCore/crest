@@ -1,6 +1,6 @@
 [submodule "build-infra"]
 	path = build-infra
-	url = git@github.com:ClearwaterCore/clearwater-build-infra.git
+	url = git@github.com:Metaswitch/clearwater-build-infra.git
 [submodule "modules/pure-sasl"]
 	path = modules/pure-sasl
 	url = git://github.com/thobbs/pure-sasl.git
