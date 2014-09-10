@@ -36,11 +36,11 @@ from twisted.internet import defer
 from telephus.cassandra.ttypes import NotFoundException
 from metaswitch.crest.api.base import BaseHandler
 import xml.etree.ElementTree as ET
+import logging
 
-from ..models import PublicID, ServiceProfile
+from ..models import PublicID, ServiceProfile, IRS
 
 JSON_PUBLIC_IDS = "public_ids"
-
 
 def verify_relationships(start=None, finish=None):
     """
@@ -121,6 +121,15 @@ class AllServiceProfilesHandler(BaseHandler):
                                                             (irs_uuid, sp_uuid))
         self.set_status(201)
         self.finish()
+
+    @verify_relationships()
+    @defer.inlineCallbacks
+    def get(self, irs_uuid):
+        try:
+            ids = yield IRS(irs_uuid).get_service_profiles()
+            self.send_json({"service_profiles": ids})
+        except NotFoundException:
+            self.send_error(404)
 
 
 class ServiceProfileHandler(BaseHandler):

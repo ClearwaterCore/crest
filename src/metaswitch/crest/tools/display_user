@@ -81,6 +81,11 @@ shift
 
 HSPROV=${LOCAL_IP}:${HTTP_PORT}
 
+if [ "$(curl -s http://${HSPROV}/ping 2>&1)" != "OK" ]; then
+    printf "Error: can't contact homestead-prov @ http://${HSPROV}!\n"
+    exit 1
+fi
+
 impu=$(curl -s http://${HSPROV}/impu/sip:${USER}@${DOMAIN} 2>&1)
 if [[ ${impu:0:1} == "<" ]]; then
     if [[ "$(curl -s http://${HSPROV}/impi/${USER}@${DOMAIN}/digest)" =~ digest_ha1 ]]; then
@@ -95,7 +100,7 @@ if [[ ${impu:0:1} == "<" ]]; then
         echo "  $digest"
 	echo "iFC:"
 	(
-	    echo ${iFC}|python -c 'import xml.dom.minidom, sys; print xml.dom.minidom.parse(sys.stdin).toprettyxml()'
+	    echo ${iFC}|python -c 'import xml.dom.minidom, sys; print xml.dom.minidom.parse(sys.stdin).toprettyxml()'|sed -e '/^[[:space:]]*$/d'
 	) 2>&1 | while IFS='' read -r line; do
 	    printf "   %s\n" "$line"
 	done

@@ -1,0 +1,138 @@
+#!/bin/bash
+
+mydir=$(cd `dirname $0`;pwd)
+cwd=$(pwd)
+
+cmdname=$0
+
+usage()
+{
+    printf "\
+Usage: $cmdname [OPTION...] <directory-number> <domain>\n\
+\n\
+Options:\n\
+  -h, --help        display this usage\n"
+
+    printf "\n"
+
+    exit 0
+}
+
+error()
+{
+    printf "$@"
+    printf "\n\n"
+
+    usage
+}
+
+params="$(getopt -o h -l help --name $cmdname -- "$@")"
+
+if [ $? -ne 0 ]
+then
+    usage
+fi
+
+eval set -- "$params"
+unset params
+
+while true
+do
+    case $1 in
+	--)
+	shift
+	break
+	;;
+        -h|--help)
+        usage
+        ;;
+        *)
+        usage
+        ;;
+    esac
+done
+
+if [ ! /usr/share/clearwater/homestead/src/metaswitch/crest/local_settings.py ]; then
+    error "Error: missing '/usr/share/clearwater/homestead/src/metaswitch/crest/local_settings.py'"
+fi
+
+eval $(python -c 'execfile("/usr/share/clearwater/homestead/src/metaswitch/crest/local_settings.py"); print "LOCAL_IP=%s\nHTTP_PORT=%s\n" % (LOCAL_IP, HTTP_PORT)')
+
+if [ -z $LOCAL_IP ]; then
+    printf "Error: no LOCAL_IP in local_settings!\n"
+    exit 1
+fi
+
+if [ -z $HTTP_PORT ]; then
+    printf "Error: no HTTP_PORT in local_settings!\n"
+    exit 1
+fi
+
+USER=$1
+if [ -z $USER ]; then
+    error "Error: a user (directory number) must be specified!"
+fi
+shift
+DOMAIN=$1
+if [ -z $DOMAIN ]; then
+    error "Error: a domain must be specified!"
+fi
+shift
+
+HSPROV=${LOCAL_IP}:${HTTP_PORT}
+public_id=sip:${USER}@${DOMAIN}
+private_id=${USER}@${DOMAIN}
+
+if [ "$(curl -s http://${HSPROV}/ping 2>&1)" != "OK" ]; then
+    printf "Error: can't contact homestead-prov @ http://${HSPROV}!\n"
+    exit 1
+fi
+
+impu=$(curl -s http://${HSPROV}/impu/${public_id} 2>&1)
+if [[ ${impu:0:1} != "<" ]]; then
+    printf "Error: IMPU user '${public_id}' does not exist!\n"
+    exit 1
+fi
+  
+if [[ "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
+    sp_url=$(curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|grep "Location:"|awk '{print $2}'|sed -e 's#[[:space:]]##g')
+    #echo "sp_url=${sp_url}"
+    sp_uuid=$(echo ${sp_url}|sed -e 's#/irs/.*/service_profiles/##')
+    #echo "sp_uuid=${sp_uuid}"
+    irs_uuid=$(curl -s http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets|python -c 'import json,sys;obj=json.load(sys.stdin);print obj["associated_implicit_registration_sets"][0]' 2>&1)
+    #echo "irs_uuid=${irs_uuid}"
+
+    #
+    # Delete the public ID
+    #
+    pubid_sta=$(curl -s -X DELETE http://${HSPROV}${sp_url}/public_ids/${public_id})
+    #echo "pubid_sta=${pubid_sta}"
+    if [ ! -z "$pubid_sta" ]; then
+	printf "Error: couldn't delete public ID '${public_id}'!\n"
+	exit 1
+    fi
+
+    #
+    # Delete public ID
+    #
+    #echo curl -s -X DELETE http://${HSPROV}/irs/${irs_uuid}
+    irs_sta=$(curl -s -X DELETE http://${HSPROV}/irs/${irs_uuid})
+    #echo "irs_sta=${irs_sta}"
+    if [ ! -z "$irs_sta" ]; then
+	printf "Error: couldn't delete IRS!\n"
+	exit 1
+    fi
+    #echo curl -s -X DELETE http://${HSPROV}/private/${private_id}
+    privid_sta=$(curl -s -X DELETE http://${HSPROV}/private/${private_id})
+    #echo "privid_sta=${privid_sta}"
+    if [ ! -z "$privid_sta" ]; then
+	printf "Error: couldn't delete private ID '${private_id}'!\n"
+	exit 1
+    fi
+
+else
+    printf "Error: IMPI user '${private_id}' does not exist!\n"
+    exit 1
+fi
+
+

@@ -132,6 +132,12 @@ class IRS(ProvisioningModel):
         defer.returnValue(irs_uuid)
 
     @defer.inlineCallbacks
+    def get_service_profiles(self):
+        pub_hash = yield self.get_columns_with_prefix_stripped(
+                                                self.SERVICE_PROFILE_PREFIX)
+        defer.returnValue(pub_hash.keys())
+
+    @defer.inlineCallbacks
     def get_associated_privates(self):
         priv_hash = yield self.get_columns_with_prefix_stripped(self.ASSOC_PRIVATE_PREFIX)
         defer.returnValue(priv_hash.keys())
