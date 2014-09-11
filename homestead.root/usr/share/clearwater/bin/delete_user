@@ -52,11 +52,13 @@ do
     esac
 done
 
-if [ ! /usr/share/clearwater/homestead/src/metaswitch/crest/local_settings.py ]; then
-    error "Error: missing '/usr/share/clearwater/homestead/src/metaswitch/crest/local_settings.py'"
+local_settings=$(find /usr/share/clearwater/homestead/env -name local_settings.py)
+if [ -z "$local_settings" ]; then
+    printf "Error: can't find local_settings.py!\n"
+    exit 1
 fi
-
-eval $(python -c 'execfile("/usr/share/clearwater/homestead/src/metaswitch/crest/local_settings.py"); print "LOCAL_IP=%s\nHTTP_PORT=%s\n" % (LOCAL_IP, HTTP_PORT)')
+    
+eval $(python -c "execfile(\"$local_settings\"); print \"LOCAL_IP=%s\nHTTP_PORT=%s\nLOCAL_PROVISIONING_ENABLED=%s\nHSS_ENABLED=%s\n\" % (LOCAL_IP, HTTP_PORT, LOCAL_PROVISIONING_ENABLED, HSS_ENABLED)")
 
 if [ -z $LOCAL_IP ]; then
     printf "Error: no LOCAL_IP in local_settings!\n"
@@ -65,6 +67,16 @@ fi
 
 if [ -z $HTTP_PORT ]; then
     printf "Error: no HTTP_PORT in local_settings!\n"
+    exit 1
+fi
+
+if [ "$LOCAL_PROVISIONING_ENABLED" != "True" ]; then
+    printf "Error: local provisioning is not enabled!\n"
+    exit 1
+fi
+
+if [ "$HSS_ENABLED" != "False" ]; then
+    printf "Error: HSS is not disabled!\n"
     exit 1
 fi
 
