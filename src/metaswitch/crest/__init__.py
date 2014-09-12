@@ -31,3 +31,147 @@
 # "OpenSSL Licenses" means the OpenSSL License and Original SSLeay License
 # under which the OpenSSL Project distributes the OpenSSL toolkit software,
 # as those licenses appear in the file LICENSE-OPENSSL.
+
+import syslog, settings, weakref
+
+class ENT:
+    _instances = set()
+    
+    def __init__(self, name, level, code, msg, cause, effect, action):
+        self.level = level
+        self.code = code
+        self.msg = msg
+        self.name = name
+        self.cause = cause
+        self.effect = effect
+        self.action = action
+        self._instances.add(weakref.ref(self))
+
+    def __str__(self):
+        return self.name
+
+    def getKey(self):
+        return self.code
+
+    @classmethod
+    def getinstances(cls):
+        dead = set()
+        for ref in cls._instances:
+            obj = ref()
+            if obj is not None:
+                yield obj
+            else:
+                dead.add(ref)
+        cls._instances -= dead
+
+    def log(self):
+        syslog.syslog(self.level, ("%d (%s) " + self.msg) % (self.code, self.name))
+
+    @classmethod
+    def printDefs(cls):
+        level2text={ syslog.LOG_INFO : 'INFO', syslog.LOG_WARNING : 'WARNING', syslog.LOG_ERR : 'ERROR', syslog.LOG_CRIT : 'CRITICAL' }
+        for obj in sorted(cls.getinstances(), key=cls.getKey):
+            print obj.name
+            print "   level: %s" % level2text[obj.level]
+            print "   code: %s" % obj.code
+            print "   msg: '%s'" % obj.msg
+            print "   cause: '%s'" % obj.cause
+            print "   effect: '%s'" % obj.effect
+            print "   action: '%s'" % obj.action
+
+class ENT1(ENT):
+    def log(self, v1):
+        syslog.syslog(self.level, ("%d (%s) " + self.msg) % (self.code, self.name, v1))
+
+class ENT2(ENT):
+    def log(self, v1, v2):
+        syslog.syslog(self.level, ("%d (%s) " + self.msg) % (self.code, self.name, v1, v2))
+
+class ENT3(ENT):
+    def log(self, v1, v2, v3):
+        syslog.syslog(self.level, ("%d (%s) " + self.msg) % (self.code, self.name, v1, v2, v3))
+
+class ENT4(ENT):
+    def log(self, v1, v2, v3, v4):
+        syslog.syslog(self.level, ("%d (%s) " + self.msg) % (self.code, self.name, v1, v2, v3, v4))
+
+CREST_SHUTTING_DOWN = ENT("CREST_SHUTTING_DOWN",
+    syslog.LOG_INFO, 1,
+    "Service '%s' is shutting down" % settings.LOG_FILE_PREFIX,
+    "A 'shutdown' was requested by an external entity",
+    "%s service is no longer available" % settings.LOG_FILE_PREFIX,
+    "Verify that the shutdown request was authorized"
+    )
+
+CREST_STARTING = ENT("CREST_STARTING",
+    syslog.LOG_INFO, 2,
+    "Service '%s' is starting" % settings.LOG_FILE_PREFIX,
+    "A 'start' was requested by an external entity",
+    "%s service is starting" % settings.LOG_FILE_PREFIX,
+    ""
+    )
+
+CREST_UP = ENT("CREST_UP",
+    syslog.LOG_INFO, 3,
+    "Service '%s' is up and listening for HTTP on port %s" % (settings.LOG_FILE_PREFIX, settings.HTTP_PORT),
+    "A shutdown was requested by an external entity",
+    "%s service is available" % settings.LOG_FILE_PREFIX,
+    ""
+    )
+
+API_UNKNOWN = ENT("API_UNKNOWN",
+    syslog.LOG_INFO, 4,
+    "Request for unknown API",
+    "A client made a request using an unknown API",
+    "A 404 error is returned to the client",
+    ""
+    )
+
+API_GUESSED_JSON = ENT1("API_GUESSED_JSON",
+    syslog.LOG_WARNING, 5,
+    "Guessed MIME type of uploaded data as JSON from client %s",
+    "A client sent data of unspecified type, so it was assumed to be JSON",
+    "JSON mime type is assumed",
+    "The client should be fixed so as to specify a MIME type"
+    )
+
+API_GUESSED_URLENCODED = ENT1("API_GUESSED_URLENCODED",
+    syslog.LOG_WARNING, 6,
+    "Guessed MIME type of uploaded data as URL encoded from client %s",
+    "A client sent data of unspecified type, so it was assumed to be JSON",
+    "URL encoding is assumed",
+    "The client should be fixed so as to specify a MIME type for the data"
+    )
+
+API_OVERLOAD = ENT("API_OVERLOAD",
+    syslog.LOG_WARNING, 7,
+    "Service '%s' is overloaded and rejecting requests" % settings.LOG_FILE_PREFIX,
+    "The service has received too many requests and has become overloaded",
+    "Requests are being rejected",
+    "Determine the cause of the overload and scale appropriately"
+    )
+
+API_HTTPERROR = ENT1("API_HTTPERROR",
+    syslog.LOG_WARNING, 8,
+    "HTTP error: %s",
+    "The service has received too many requests and has become overloaded",
+    "The request has been rejected",
+    ""
+    )
+
+API_UNCAUGHT_EXCEPTION = ENT1("API_UNCAUGHT_EXCEPTION",
+    syslog.LOG_ERR, 9,
+    "Uncaught exception: %s",
+    "An unexpected exception has occurred while processing a request",
+    "The request has been rejected",
+    "Gather diagnostics and report to customer service"
+    )
+
+TWISTED_ERROR = ENT1("TWISTED_ERROR",
+    syslog.LOG_ERR, 10,
+    "Internal 'twisted' error: %s",
+    "An unexpected internal error has occurred within the 'Twisted' component",
+    "Unknown",
+    "Gather diagnostics and report to customer service"
+    )
+                     

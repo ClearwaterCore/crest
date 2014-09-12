@@ -34,7 +34,7 @@
 # under which the OpenSSL Project distributes the OpenSSL toolkit software,
 # as those licenses appear in the file LICENSE-OPENSSL.
 
-
+import metaswitch.crest
 import os
 import argparse
 import logging
@@ -49,11 +49,13 @@ from twisted.internet import reactor
 from metaswitch.crest import api
 from metaswitch.crest import settings, logging_config
 from metaswitch.common import utils
+from metaswitch.crest import ENT
+exec("from metaswitch.crest import " + ", ".join( str(x) for x in ENT.getinstances()))
 
 _log = logging.getLogger("crest")
 
 def shutdown_before():
-    _log.info("Shutting down statistics")
+    metaswitch.crest.CREST_SHUTTING_DOWN.log()
     api.base.shutdownStats()
 
 def create_application():
@@ -108,6 +110,8 @@ def standalone():
     logging_config.configure_logging(args.process_id)
     logging_config.configure_syslog()
 
+    metaswitch.crest.CREST_STARTING.log()
+
     # Uncomment the following to see twisted logs
     #from twisted.python import log
     #observer = log.PythonLoggingObserver()
@@ -121,6 +125,7 @@ def standalone():
     else:
         # Cyclone
         _log.info("Listening for HTTP on port %s", settings.HTTP_PORT)
+        metaswitch.crest.CREST_UP.log()
         http_port = reactor.listenTCP(settings.HTTP_PORT, application, interface=settings.LOCAL_IP)
 
         for process_id in range(1, args.worker_processes):

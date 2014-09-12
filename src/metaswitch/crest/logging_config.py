@@ -68,9 +68,39 @@ class LogHandler(logging.Handler): # Inherit from logging.Handler
                 print self.format(record)
                 syslog.syslog(record.levelno, self.format(record))
 
+import twisted.python
+from metaswitch.crest import ENT
+exec("from metaswitch.crest import " + ", ".join( str(x) for x in ENT.getinstances()))
+
+class LevelLogObserver(twisted.python.log.FileLogObserver):
+    def __init__(self, level=logging.ERROR):
+        self.logLevel = level
+
+    def emit(self,eventDict):
+        """Custom emit for FileLogObserver"""
+        text = twisted.python.log.textFromEventDict(eventDict)
+        if text is None:
+            return
+        if eventDict['isError']:
+            level = logging.ERROR
+        elif 'level' in eventDict:
+            level = eventDict['level']
+        else:
+            level = settings.LOG_LEVEL
+        if level >= self.logLevel:
+            fmtDict = {'text': text.replace("\n", "\n\t")}
+            msgStr = twisted.python.log._safeFormat("twisted %(text)s\n", fmtDict)
+            TWISTED_ERROR.log(msgStr)
+
+logger=LevelLogObserver()
+twisted.python.log.addObserver(logger.emit)
+
 def configure_syslog():
     syslog.openlog(settings.LOG_FILE_PREFIX, logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL6)
-    syslogHandler = LogHandler()
-    syslogHandler.setFormatter(logging.Formatter('%(levelname)1.1s %(module)s:%(lineno)d %(process)d:%(thread)d] %(message)s'))
-    syslogHandler.setLevel(settings.LOG_LEVEL)
-    logging.getLogger().addHandler(syslogHandler)
+    # Uncomment the following to print ENT definitions at start up
+    #ENT.printDefs()
+    # Uncoment the following to send all logs to syslog
+    #syslogHandler = LogHandler()
+    #syslogHandler.setFormatter(logging.Formatter('%(levelname)1.1s %(module)s:%(lineno)d %(process)d:%(thread)d] %(message)s'))
+    #syslogHandler.setLevel(settings.LOG_LEVEL)
+    #logging.getLogger().addHandler(syslogHandler)
