@@ -1,6 +1,4 @@
-#!/bin/bash
-
-# @file do_backup.sh
+# @file monotime.py
 #
 # Project Clearwater - IMS in the Cloud
 # Copyright (C) 2013  Metaswitch Networks Ltd
@@ -34,66 +32,23 @@
 # under which the OpenSSL Project distributes the OpenSSL toolkit software,
 # as those licenses appear in the file LICENSE-OPENSSL.
 
-die () {
-  echo >&2 "$@"
-  exit 1
-}
+import ctypes, os
 
-[ "$#" -eq 1 ] || die "Usage: do_backup.sh <keyspace>"
-KEYSPACE=$1
-COMPONENT=$(cut -d_ -f1 <<< $KEYSPACE)
-DATABASE=$(cut -d_ -f2 <<< $KEYSPACE)
-DATA_DIR=/var/lib/cassandra/data
-if [ -n "$DATABASE" ]
-then
-  BACKUP_DIR="/usr/share/clearwater/$COMPONENT/backup/backups/$DATABASE"
-else
-  BACKUP_DIR="/usr/share/clearwater/$COMPONENT/backup/backups"
-fi
-[ -d "$DATA_DIR/$KEYSPACE" ] || die "Keyspace $KEYSPACE does not exist"
-if [[ ! -d "$BACKUP_DIR" ]]
-then
-  mkdir -p $BACKUP_DIR
-  echo "Created backup directory $BACKUP_DIR"
-fi
+CLOCK_MONOTONIC_RAW = 4 # see <linux/time.h>
 
-# Remove old backups (keeping last 3)
-# Cassandra keeps snapshots per columnfamily, so we need to delete them individually
-DIRS=$(find $DATA_DIR/$KEYSPACE/ -type d | grep 'snapshots$')
-for d in $DIRS
-do
-  for f in $(ls -t $d | tail -n +4)
-  do
-    echo "Deleting old backup: $d/$f"
-    rm -r $d/$f
-  done
-done
+class timespec(ctypes.Structure):
+    _fields_ = [
+        ('tv_sec', ctypes.c_long),
+        ('tv_nsec', ctypes.c_long)
+    ]
 
-for f in $(ls -t $BACKUP_DIR | tail -n +4)
-do
-  echo "Deleting old backup: $BACKUP_DIR/$f"
-  rm -r $BACKUP_DIR/$f
-done
+librt = ctypes.CDLL('librt.so.1', use_errno=True)
+clock_gettime = librt.clock_gettime
+clock_gettime.argtypes = [ctypes.c_int, ctypes.POINTER(timespec)]
 
-echo "Creating backup for keyspace $KEYSPACE..."
-nodetool -h localhost -p 7199 snapshot $KEYSPACE
-
-for t in $DATA_DIR/$KEYSPACE/*
-do
-  TABLE=`basename $t`
-  if [ -d $DATA_DIR/$KEYSPACE/$TABLE/snapshots ]; then
-      for s in $DATA_DIR/$KEYSPACE/$TABLE/snapshots/*
-      do
-	  SNAPSHOT=`basename $s`
-	  mkdir -p $BACKUP_DIR/$SNAPSHOT/$TABLE
-	  cp -al $DATA_DIR/$KEYSPACE/$TABLE/snapshots/$SNAPSHOT/* $BACKUP_DIR/$SNAPSHOT/$TABLE
-      done
-  else
-      printf "Warning: snapshot of $KEYSPACE/$TABLE not taken!\n"
-  fi
-done
-
-#nodetool clearsnapshot $KEYSPACE -t $SNAPSHOT
-nodetool clearsnapshot $KEYSPACE
-
-echo "Backups can be found at: $BACKUP_DIR"
+def monotonic_time():
+    t = timespec()
+    if clock_gettime(CLOCK_MONOTONIC_RAW , ctypes.pointer(t)) != 0:
+        errno_ = ctypes.get_errno()
+        raise OSError(errno_, os.strerror(errno_))
+    return t.tv_sec + t.tv_nsec * 1e-9

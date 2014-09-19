@@ -135,6 +135,9 @@ LOCAL_PROVISIONING_ENABLED = True
 # default is both 3GPP (10415) and ETSI (13019), but this can be overridden.
 CX_SUPPORTED_VENDORS = [10415, 13019]
 
+# Limit each log to a rate of no more than one per every 5 seconds
+PDLOG_RATE_LIMIT = 5 
+
 # Include any locally-defined settings.
 _local_settings_file = os.path.join(_MY_DIR, "local_settings.py")
 if os.path.exists(_local_settings_file):

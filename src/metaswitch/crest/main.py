@@ -49,13 +49,12 @@ from twisted.internet import reactor
 from metaswitch.crest import api
 from metaswitch.crest import settings, logging_config
 from metaswitch.common import utils
-from metaswitch.crest import ENT
-exec("from metaswitch.crest import " + ", ".join( str(x) for x in ENT.getinstances()))
+from metaswitch.crest import PDLog
 
 _log = logging.getLogger("crest")
 
 def shutdown_before():
-    metaswitch.crest.CREST_SHUTTING_DOWN.log()
+    metaswitch.crest.PDLog.CREST_SHUTTING_DOWN.log()
     api.base.shutdownStats()
 
 def create_application():
@@ -110,12 +109,7 @@ def standalone():
     logging_config.configure_logging(args.process_id)
     logging_config.configure_syslog()
 
-    metaswitch.crest.CREST_STARTING.log()
-
-    # Uncomment the following to see twisted logs
-    #from twisted.python import log
-    #observer = log.PythonLoggingObserver()
-    #observer.start()
+    metaswitch.crest.PDLog.CREST_STARTING.log()
 
     # setup accumulators and counters for statistics gathering
     api.base.setupStats(args.process_id, args.worker_processes)
@@ -124,9 +118,9 @@ def standalone():
         reactor.adoptStreamPort(args.shared_http_fd, AF_INET, application)
     else:
         # Cyclone
-        _log.info("Listening for HTTP on port %s", settings.HTTP_PORT)
-        metaswitch.crest.CREST_UP.log()
         http_port = reactor.listenTCP(settings.HTTP_PORT, application, interface=settings.LOCAL_IP)
+        _log.info("Listening for HTTP on port %s", settings.HTTP_PORT)
+        metaswitch.crest.PDLog.CREST_UP.log()
 
         for process_id in range(1, args.worker_processes):
             reactor.spawnProcess(None, executable, [executable, __file__,
@@ -135,6 +129,9 @@ def standalone():
                                  childFDs={0: 0, 1: 1, 2: 2, http_port.fileno(): http_port.fileno()},
                                  env = os.environ)
 
+    # We need to catch the shutdown request so that we can properly stop
+    # the ZMQ interface; otherwise the reactor won't shutdown on a SIGTERM 
+    # and will be SIGKILLed when the service is stopped.
     reactor.addSystemEventTrigger('before', 'shutdown', shutdown_before)
 
     # Kick off the reactor to start listening on configured ports

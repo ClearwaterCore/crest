@@ -63,13 +63,22 @@ do
     esac
 done
 
-local_settings=$(find /usr/share/clearwater/homestead/env -name local_settings.py)
+local_settings=$(
+    find /usr/share/clearwater/homestead/env -name local_settings.py
+)
 if [ -z "$local_settings" ]; then
     printf "Error: can't find local_settings.py!\n"
     exit 1
 fi
     
-eval $(python -c "execfile(\"$local_settings\"); print \"LOCAL_IP=%s\nHTTP_PORT=%s\nLOCAL_PROVISIONING_ENABLED=%s\nHSS_ENABLED=%s\n\" % (LOCAL_IP, HTTP_PORT, LOCAL_PROVISIONING_ENABLED, HSS_ENABLED)")
+eval $(python -c "\
+execfile(\"$local_settings\"); \
+print \"\
+LOCAL_IP=%s\n\
+HTTP_PORT=%s\n\
+LOCAL_PROVISIONING_ENABLED=%s\n\
+HSS_ENABLED=%s\n\" % \
+(LOCAL_IP, HTTP_PORT, LOCAL_PROVISIONING_ENABLED, HSS_ENABLED)")
 
 if [ -z $LOCAL_IP ]; then
     printf "Error: no LOCAL_IP in local_settings!\n"
@@ -112,7 +121,10 @@ if [ ! -z $IFC ]; then
 	printf "Error: no such file '${IFC}'!\n"
 	exit 1
     else
-	cat $IFC|python -c 'import xml.dom.minidom, sys; print xml.dom.minidom.parse(sys.stdin).toprettyxml()' 2>&1|sed -e '/^[[:space:]]*$/d'|grep -qi expaterror
+	cat $IFC|python -c '\
+import xml.dom.minidom, sys;\
+print xml.dom.minidom.parse(sys.stdin).toprettyxml()\
+' 2>&1|sed -e '/^[[:space:]]*$/d'|grep -qi expaterror
 	if [ $? -eq 0 ]; then
 	    printf "Error: invalid XML in '${IFC}!\n"
 	    exit 1
@@ -143,11 +155,16 @@ fi
 #
 # Create the private ID
 #
-new_digest=$(printf "${private_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}')
+new_digest=$(
+    printf "${private_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}'
+)
 json_digest="{\"digest_ha1\": \"${new_digest}\", \"realm\": \"${DOMAIN}\"}"
 #echo "json_digest=${json_digest}"
-put_sta=$(printf "%s\n" "${json_digest}"|curl -s -X PUT -d @- http://${HSPROV}/private/${private_id})
-if [ ! -z $put_sta ]; then
+put_sta=$(
+    printf "%s\n" "${json_digest}" |\
+    curl -s -X PUT -d @- http://${HSPROV}/private/${private_id}
+)
+if [ ! -z "$put_sta" ]; then
     printf "Error: couldn't create IMPU user '${public_id}'!\n"
     exit 1
 fi
@@ -155,14 +172,21 @@ fi
 #
 # Create IRS
 #
-irs_uuid=$(curl -s -D - -X POST http://${HSPROV}/irs|grep "Location:"|awk '{print $2}'|sed -e 's#[[:space:]]##g'|sed -e 's#/irs/##')
+irs_uuid=$(
+    curl -s -D - -X POST http://${HSPROV}/irs|\
+    grep "Location:"|awk '{print $2}'|\
+    sed -e 's#[[:space:]]##g'|\
+    sed -e 's#/irs/##'
+)
 #echo "irs_uuid=$irs_uuid"
 
 #
 # Associate the private ID with the new IRS
 #
 #echo curl -s -X PUT http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets/${irs_uuid}
-rsp=$(curl -s -X PUT http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets/${irs_uuid})
+rsp=$(
+    curl -s -X PUT http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets/${irs_uuid}
+)
 if [ ! -z $rsp ]; then
     printf "Error: couldn't associate '${private_id}' with IRS '${irs_uuid}!\n"
     exit 1
@@ -172,13 +196,22 @@ fi
 # Create the service profile
 #
 #echo curl -s -X POST http://${HSPROV}/irs/${irs_uuid}/service_profiles
-sp_uuid=$(curl -s -D - -X POST http://${HSPROV}/irs/${irs_uuid}/service_profiles|grep "Location:"|awk '{print $2}'|sed -e 's#[[:space:]]##g'|sed -e 's#/irs/.*/service_profiles/##')
+sp_uuid=$(
+    curl -s -D - -X POST http://${HSPROV}/irs/${irs_uuid}/service_profiles|\
+    grep "Location:"|\
+    awk '{print $2}'|\
+    sed -e 's#[[:space:]]##g'|\
+    sed -e 's#/irs/.*/service_profiles/##'
+)
 #echo "sp_uuid=$sp_uuid"
 
 #
 # Create public ID
 #
-pubid_sta=$(printf "<PublicIdentity><Identity>%s</Identity></PublicIdentity>\n" "${public_id}"|curl -s -X PUT -d @- http://${HSPROV}/irs/${irs_uuid}/service_profiles/${sp_uuid}/public_ids/${public_id})
+pubid_sta=$(
+    printf "<PublicIdentity><Identity>%s</Identity></PublicIdentity>\n" "${public_id}"|\
+    curl -s -X PUT -d @- http://${HSPROV}/irs/${irs_uuid}/service_profiles/${sp_uuid}/public_ids/${public_id}
+)
 if [ ! -z $pubid_sta ]; then
     printf "Error: couldn't create public ID '${public_id}'!\n"
     exit 1
@@ -187,7 +220,12 @@ fi
 #
 # Set iFC
 #
-service_profile=$(curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|grep "Location:"|awk '{print $2}'|tr '[[:space:]]' ' '|sed -e 's#[[:space:]]##g')
+service_profile=$(
+    curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
+    grep "Location:"|\
+    awk '{print $2}'|\
+    tr '[[:space:]]' ' '|sed -e 's#[[:space:]]##g'
+)
 if [ -z $IFC ]; then
     cat > $$.iFC <<'EOF'
 <?xml version="1.0" ?>
@@ -235,7 +273,10 @@ fi
 sed -ie "s#\${DOMAIN}#${DOMAIN}#g" $$.iFC
 sed -ie "s#\${PREFIX}#${PREFIX}#g" $$.iFC
 
-ifc_sta=$(cat $$.iFC|curl -s -X PUT -d @- http://${HSPROV}${service_profile}/filter_criteria)
+ifc_sta=$(
+    cat $$.iFC|\
+    curl -s -X PUT -d @- http://${HSPROV}${service_profile}/filter_criteria
+)
 if [ ! -z $ifc_sta ]; then
     printf "Error: couldn't update iFC!\n"
     exit 1

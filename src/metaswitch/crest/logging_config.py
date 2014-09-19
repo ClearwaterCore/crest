@@ -37,8 +37,10 @@ import os
 import logging
 import logging.handlers
 import syslog
+import PDLog
 
 from metaswitch.crest import settings
+from metaswitch.crest.PDLog import PDLog
 
 def configure_logging(task_id):
     # Configure the root logger to accept all messages. We control the log level
@@ -58,19 +60,7 @@ def configure_logging(task_id):
     root_log.addHandler(handler)
     print "Logging to %s" % log_file
 
-class LogHandler(logging.Handler): # Inherit from logging.Handler
-        def __init__(self):
-                # run the regular Handler __init__
-                logging.Handler.__init__(self)
-        def emit(self, record):
-                # record.message is the log message
-                #print record
-                print self.format(record)
-                syslog.syslog(record.levelno, self.format(record))
-
 import twisted.python
-from metaswitch.crest import ENT
-exec("from metaswitch.crest import " + ", ".join( str(x) for x in ENT.getinstances()))
 
 class LevelLogObserver(twisted.python.log.FileLogObserver):
     def __init__(self, level=logging.ERROR):
@@ -78,6 +68,10 @@ class LevelLogObserver(twisted.python.log.FileLogObserver):
 
     def emit(self,eventDict):
         """Custom emit for FileLogObserver"""
+
+        from metaswitch.crest import PDLog
+        from metaswitch.crest.PDLog import TWISTED_ERROR
+
         text = twisted.python.log.textFromEventDict(eventDict)
         if text is None:
             return
@@ -98,9 +92,4 @@ twisted.python.log.addObserver(logger.emit)
 def configure_syslog():
     syslog.openlog(settings.LOG_FILE_PREFIX, logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL6)
     # Uncomment the following to print ENT definitions at start up
-    #ENT.printDefs()
-    # Uncoment the following to send all logs to syslog
-    #syslogHandler = LogHandler()
-    #syslogHandler.setFormatter(logging.Formatter('%(levelname)1.1s %(module)s:%(lineno)d %(process)d:%(thread)d] %(message)s'))
-    #syslogHandler.setLevel(settings.LOG_LEVEL)
-    #logging.getLogger().addHandler(syslogHandler)
+    #PDLog.printDefs()

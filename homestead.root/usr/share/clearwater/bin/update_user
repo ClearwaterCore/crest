@@ -52,13 +52,22 @@ do
     esac
 done
 
-local_settings=$(find /usr/share/clearwater/homestead/env -name local_settings.py)
+local_settings=$(
+    find /usr/share/clearwater/homestead/env -name local_settings.py
+)
 if [ -z "$local_settings" ]; then
     printf "Error: can't find local_settings.py!\n"
     exit 1
 fi
     
-eval $(python -c "execfile(\"$local_settings\"); print \"LOCAL_IP=%s\nHTTP_PORT=%s\nLOCAL_PROVISIONING_ENABLED=%s\nHSS_ENABLED=%s\n\" % (LOCAL_IP, HTTP_PORT, LOCAL_PROVISIONING_ENABLED, HSS_ENABLED)")
+eval $(
+    python -c "execfile(\"$local_settings\"); print \"\
+LOCAL_IP=%s\n\
+HTTP_PORT=%s\n\
+LOCAL_PROVISIONING_ENABLED=%s\n\
+HSS_ENABLED=%s\n\" % \
+(LOCAL_IP, HTTP_PORT, LOCAL_PROVISIONING_ENABLED, HSS_ENABLED)"
+)
 
 if [ -z $LOCAL_IP ]; then
     printf "Error: no LOCAL_IP in local_settings!\n"
@@ -110,12 +119,22 @@ if [[ ${impu:0:1} == "<" ]]; then
     if [[ "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
 	public_id=${public_id}
 
-	service_profile=$(curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|grep "Location:"|awk '{print $2}'|tr '[[:space:]]' ' '|sed -e 's#[[:space:]]##g')
-	iFC=$(curl -s http://${HSPROV}${service_profile}/filter_criteria)
+	service_profile=$(
+	    curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
+            grep "Location:"|\
+            awk '{print $2}'|\
+            tr '[[:space:]]' ' '|\
+            sed -e 's#[[:space:]]##g'
+        )
 
-	new_digest=$(printf "${private_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}')
+	new_digest=$(
+	    printf "${private_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}'
+	)
 	json_digest="{\"digest_ha1\": \"${new_digest}\", \"realm\": \"${DOMAIN}\"}"
-	put_sta=$(printf "%s\n" "${json_digest}"|curl -s curl -X PUT -d @- http://${HSPROV}/private/${private_id})
+	put_sta=$(
+	    printf "%s\n" "${json_digest}"|\
+            curl -s curl -X PUT -d @- http://${HSPROV}/private/${private_id}
+	)
 	if [ ! -z $put_sta ]; then
 	    printf "Error: couldn't update password!\n"
 	    exit 1

@@ -51,8 +51,7 @@ from metaswitch.crest.api.statistics import Accumulator, Counter, monotonic_time
 from metaswitch.crest.api.DeferTimeout import TimeoutError
 from metaswitch.crest.api.exceptions import HSSOverloaded, HSSConnectionLost, HSSStillConnecting, UserNotIdentifiable, UserNotAuthorized
 from metaswitch.crest.api.lastvaluecache import LastValueCache
-from metaswitch.crest import ENT
-exec("from metaswitch.crest import " + ", ".join( str(x) for x in ENT.getinstances()))
+from metaswitch.crest import PDLog
 
 _log = logging.getLogger("crest.api")
 
@@ -127,6 +126,7 @@ class LoadMonitor:
     NUM_DEV = 4
 
     def __init__(self, target_latency, max_bucket_size, init_token_rate, min_token_rate):
+        self.overloaded = False
         self.accepted = 0
         self.rejected = 0
         self.pending_count = 0
@@ -142,6 +142,9 @@ class LoadMonitor:
     def admit_request(self):
         if self.bucket.get_token():
             # Got a token from the bucket, so admit the request
+            if self.overloaded == True:
+                metaswitch.crest.api.PDlog.API_NOTOVERLOADED.log()
+                self.overloaded = False
             self.accepted += 1
             self.pending_count += 1
             queue_size_accumulator.accumulate(self.pending_count)
@@ -149,6 +152,9 @@ class LoadMonitor:
                 self.max_pending_count = self.pending_count
             return True
         else:
+            if self.overloaded == False:
+                metaswitch.crest.api.PDlog.API_OVERLOADED.log()
+                self.overloaded = True
             self.rejected += 1
             return False
 
@@ -224,11 +230,11 @@ def _guess_mime_type(body):
         (body[0] == "[" and
          body[-1] == "]")):
         _log.warning("Guessed MIME type of uploaded data as JSON. Client should specify.")
-        API_GUESSED_JSON.log(self.request.remote_ip)
+        metaswitch.crest.PDLog.API_GUESSED_JSON.log(self.request.remote_ip)
         return "json"
     else:
         _log.warning("Guessed MIME type of uploaded data as URL-encoded. Client should specify.")
-        API_GUESSED_URLENCODED.log(self.request.remote_ip)
+        metaswitch.crest.PDLog.API_GUESSED_URLENCODED.log(self.request.remote_ip)
         return "application/x-www-form-urlencoded"
 
 
@@ -252,7 +258,6 @@ class BaseHandler(cyclone.web.RequestHandler):
                    (self.request.remote_ip, self.request.method, self.request.protocol, self.request.host, self.request.uri))
         if not loadmonitor.admit_request():
             _log.warning("Rejecting request because of overload")
-            API_OVERLOAD.log()
             overload_counter.increment()
             return Failure(HTTPError(httplib.SERVICE_UNAVAILABLE))
 
@@ -303,10 +308,10 @@ class BaseHandler(cyclone.web.RequestHandler):
             if e.log_message:
                 format = "%d %s: " + e.log_message
                 args = [e.status_code, self._request_summary()] + list(e.args)
-                API_HTTPERROR.log(format % tuple(args))
+                metaswitch.crest.PDLog.API_HTTPERROR.log(format % tuple(args))
                 _log.warning(format, *args)
             if e.status_code not in httplib.responses:
-                API_HTTPERROR.log("bad status code %d for %s" % (e.status_code, self._request_summary()))
+                metaswitch.crest.PDLog.API_HTTPERROR.log("bad status code %d for %s" % (e.status_code, self._request_summary()))
                 _log.warning("Bad HTTP status code: %d", e.status_code)
                 cyclone.web.RequestHandler._handle_request_exception(self, e)
             else:
@@ -328,7 +333,7 @@ class BaseHandler(cyclone.web.RequestHandler):
             _log.error("Uncaught exception %s\n%r", self._request_summary(), self.request)
             _log.error("Exception: %s" % repr(e))
             _log.error(err_traceback)
-            API_UNCAUGHT_EXCEPTION.log("%s - %s" % (repr(e), self._request_summary()))
+            metaswitch.crest.PDLog.API_UNCAUGHT_EXCEPTION.log("%s - %s" % (repr(e), self._request_summary()))
             utils.write_core_file(settings.LOG_FILE_PREFIX, traceback.format_exc())
             cyclone.web.RequestHandler._handle_request_exception(self, orig_e)
 
@@ -440,5 +445,12 @@ class UnknownApiHandler(BaseHandler):
     """
     def get(self):
         _log.info("Request for unknown API")
-        API_UNKNOWN.log()
+        metaswitch.crest.PDLog.API_UNKNOWN.log(
+            "%s://%s%s" %
+            (
+                self.request.protocol, 
+                self.request.host, 
+                self.request.uri
+            ))
+
         self.send_error(404, "Invalid API")

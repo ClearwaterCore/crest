@@ -52,13 +52,21 @@ do
     esac
 done
 
-local_settings=$(find /usr/share/clearwater/homestead/env -name local_settings.py)
+local_settings=$(
+    find /usr/share/clearwater/homestead/env -name local_settings.py
+)
 if [ -z "$local_settings" ]; then
     printf "Error: can't find local_settings.py!\n"
     exit 1
 fi
     
-eval $(python -c "execfile(\"$local_settings\"); print \"LOCAL_IP=%s\nHTTP_PORT=%s\nLOCAL_PROVISIONING_ENABLED=%s\nHSS_ENABLED=%s\n\" % (LOCAL_IP, HTTP_PORT, LOCAL_PROVISIONING_ENABLED, HSS_ENABLED)")
+eval $(python -c "execfile(\"$local_settings\"); print \"\
+LOCAL_IP=%s\n\
+HTTP_PORT=%s\n\
+LOCAL_PROVISIONING_ENABLED=%s\n\
+HSS_ENABLED=%s\n\" % \
+(LOCAL_IP, HTTP_PORT, LOCAL_PROVISIONING_ENABLED, HSS_ENABLED)"
+)
 
 if [ -z $LOCAL_IP ]; then
     printf "Error: no LOCAL_IP in local_settings!\n"
@@ -107,17 +115,27 @@ if [[ ${impu:0:1} != "<" ]]; then
 fi
   
 if [[ "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
-    sp_url=$(curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|grep "Location:"|awk '{print $2}'|sed -e 's#[[:space:]]##g')
+    sp_url=$(
+	curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
+        grep "Location:"|\
+        awk '{print $2}'|\
+        sed -e 's#[[:space:]]##g'
+    )
     #echo "sp_url=${sp_url}"
     sp_uuid=$(echo ${sp_url}|sed -e 's#/irs/.*/service_profiles/##')
     #echo "sp_uuid=${sp_uuid}"
-    irs_uuid=$(curl -s http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets|python -c 'import json,sys;obj=json.load(sys.stdin);print obj["associated_implicit_registration_sets"][0]' 2>&1)
+    irs_uuid=$(
+	curl -s http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets|\
+        python -c 'import json,sys;obj=json.load(sys.stdin);print obj["associated_implicit_registration_sets"][0]' 2>&1
+    )
     #echo "irs_uuid=${irs_uuid}"
 
     #
     # Delete the public ID
     #
-    pubid_sta=$(curl -s -X DELETE http://${HSPROV}${sp_url}/public_ids/${public_id})
+    pubid_sta=$(
+	curl -s -X DELETE http://${HSPROV}${sp_url}/public_ids/${public_id}
+    )
     #echo "pubid_sta=${pubid_sta}"
     if [ ! -z "$pubid_sta" ]; then
 	printf "Error: couldn't delete public ID '${public_id}'!\n"

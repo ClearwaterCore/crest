@@ -35,6 +35,7 @@
 LOGS_DIR = "/var/log/homestead-prov"
 PID_FILE = "/var/run/homestead-prov.pid"
 LOG_FILE_PREFIX = "homestead-prov"
+PDLOG_RATE_LIMIT = 5 
 INSTALLED_HANDLERS = ["homestead"]
 HTTP_PORT = 8889
 XDM_DEFAULT_SIMSERVS_FILE = "/usr/share/clearwater/homestead/modules/common/metaswitch/common/default_simservs.xml"
