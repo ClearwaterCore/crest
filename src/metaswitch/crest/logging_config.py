@@ -91,5 +91,3 @@ twisted.python.log.addObserver(logger.emit)
 
 def configure_syslog():
     syslog.openlog(settings.LOG_FILE_PREFIX, logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL6)
-    # Uncomment the following to print ENT definitions at start up
-    #PDLog.printDefs()

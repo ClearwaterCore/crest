@@ -3,6 +3,7 @@
 mydir=$(cd `dirname $0`;pwd)
 cwd=$(pwd)
 force=0
+quiet=0
 
 cmdname=$0
 
@@ -13,6 +14,7 @@ Usage: $cmdname [OPTION...] <directory-number> <domain>\n\
 \n\
 Options:\n\
   -f, --force       proceed with delete in the face of errors\n\
+  -q, --quiet       silence 'forced' error messages and such\n\
   -h, --help        display this usage\n"
 
     printf "\n"
@@ -28,7 +30,7 @@ error()
     usage
 }
 
-params="$(getopt -o hf -l help,force --name $cmdname -- "$@")"
+params="$(getopt -o hfq -l help,force,quiet --name $cmdname -- "$@")"
 
 if [ $? -ne 0 ]
 then
@@ -47,6 +49,10 @@ do
 	;;
         -f|--force)
         let "force=1"
+	shift
+        ;;
+        -q|--quiet)
+        let "quiet=1"
 	shift
         ;;
         -h|--help)
@@ -116,14 +122,18 @@ fi
 
 impu=$(curl -s http://${HSPROV}/impu/${public_id} 2>&1)
 if [[ ${impu:0:1} != "<" ]]; then
-    printf "Error: IMPU user '${public_id}' does not exist!\n"
+    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+	printf "Error: IMPU user '${public_id}' does not exist!\n"
+    fi
     if [ $force -eq 0 ]; then
 	exit 1
     fi
 fi
   
 if [[ ! "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
-    printf "Error: IMPI user '${private_id}' does not exist!\n"
+    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+	printf "Error: IMPI user '${private_id}' does not exist!\n"
+    fi
     if [ $force -eq 0 ]; then
 	exit 1
     fi
@@ -152,7 +162,9 @@ pubid_sta=$(
 )
     #echo "pubid_sta=${pubid_sta}"
 if [ ! -z "$pubid_sta" ]; then
-    printf "Error: couldn't delete public ID '${public_id}'!\n"
+    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+	printf "Error: couldn't delete public ID '${public_id}'!\n"
+    fi
     if [ $force -eq 0 ]; then
 	exit 1
     fi
@@ -165,7 +177,9 @@ fi
 irs_sta=$(curl -s -X DELETE http://${HSPROV}/irs/${irs_uuid})
 #echo "irs_sta=${irs_sta}"
 if [ ! -z "$irs_sta" ]; then
-    printf "Error: couldn't delete IRS!\n"
+    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+	printf "Error: couldn't delete IRS!\n"
+    fi
     if [ $force -eq 0 ]; then
 	exit 1
     fi
@@ -174,8 +188,12 @@ fi
 privid_sta=$(curl -m5 -s -X DELETE http://${HSPROV}/private/${private_id})
 #echo "privid_sta=${privid_sta}"
 if [ ! -z "$privid_sta" ]; then
-    printf "Error: couldn't delete private ID '${private_id}'!\n"
+    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+	printf "Error: couldn't delete private ID '${private_id}'!\n"
+    fi
     if [ $force -eq 0 ]; then
 	exit 1
     fi
 fi
+
+
