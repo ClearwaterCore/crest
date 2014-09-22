@@ -2,6 +2,7 @@
 
 mydir=$(cd `dirname $0`;pwd)
 cwd=$(pwd)
+force=0
 
 cmdname=$0
 
@@ -11,6 +12,7 @@ usage()
 Usage: $cmdname [OPTION...] <directory-number> <domain>\n\
 \n\
 Options:\n\
+  -f, --force       proceed with delete in the face of errors\n\
   -h, --help        display this usage\n"
 
     printf "\n"
@@ -26,7 +28,7 @@ error()
     usage
 }
 
-params="$(getopt -o h -l help --name $cmdname -- "$@")"
+params="$(getopt -o hf -l help,force --name $cmdname -- "$@")"
 
 if [ $? -ne 0 ]
 then
@@ -43,6 +45,10 @@ do
 	shift
 	break
 	;;
+        -f|--force)
+        let "force=1"
+	shift
+        ;;
         -h|--help)
         usage
         ;;
@@ -111,58 +117,65 @@ fi
 impu=$(curl -s http://${HSPROV}/impu/${public_id} 2>&1)
 if [[ ${impu:0:1} != "<" ]]; then
     printf "Error: IMPU user '${public_id}' does not exist!\n"
-    exit 1
+    if [ $force -eq 0 ]; then
+	exit 1
+    fi
 fi
   
-if [[ "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
-    sp_url=$(
-	curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
+if [[ ! "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
+    printf "Error: IMPI user '${private_id}' does not exist!\n"
+    if [ $force -eq 0 ]; then
+	exit 1
+    fi
+fi
+
+sp_url=$(
+    curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
         grep "Location:"|\
         awk '{print $2}'|\
         sed -e 's#[[:space:]]##g'
-    )
-    #echo "sp_url=${sp_url}"
-    sp_uuid=$(echo ${sp_url}|sed -e 's#/irs/.*/service_profiles/##')
-    #echo "sp_uuid=${sp_uuid}"
-    irs_uuid=$(
-	curl -s http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets|\
+)
+#echo "sp_url=${sp_url}"
+sp_uuid=$(echo ${sp_url}|sed -e 's#/irs/.*/service_profiles/##')
+#echo "sp_uuid=${sp_uuid}"
+irs_uuid=$(
+    curl -s http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets|\
         python -c 'import json,sys;obj=json.load(sys.stdin);print obj["associated_implicit_registration_sets"][0]' 2>&1
-    )
-    #echo "irs_uuid=${irs_uuid}"
+)
+#echo "irs_uuid=${irs_uuid}"
 
-    #
-    # Delete the public ID
-    #
-    pubid_sta=$(
-	curl -s -X DELETE http://${HSPROV}${sp_url}/public_ids/${public_id}
-    )
+#
+# Delete the public ID
+#
+pubid_sta=$(
+    curl -s -X DELETE http://${HSPROV}${sp_url}/public_ids/${public_id}
+)
     #echo "pubid_sta=${pubid_sta}"
-    if [ ! -z "$pubid_sta" ]; then
-	printf "Error: couldn't delete public ID '${public_id}'!\n"
+if [ ! -z "$pubid_sta" ]; then
+    printf "Error: couldn't delete public ID '${public_id}'!\n"
+    if [ $force -eq 0 ]; then
 	exit 1
     fi
-
-    #
-    # Delete public ID
-    #
-    #echo curl -s -X DELETE http://${HSPROV}/irs/${irs_uuid}
-    irs_sta=$(curl -s -X DELETE http://${HSPROV}/irs/${irs_uuid})
-    #echo "irs_sta=${irs_sta}"
-    if [ ! -z "$irs_sta" ]; then
-	printf "Error: couldn't delete IRS!\n"
-	exit 1
-    fi
-    #echo curl -s -X DELETE http://${HSPROV}/private/${private_id}
-    privid_sta=$(curl -s -X DELETE http://${HSPROV}/private/${private_id})
-    #echo "privid_sta=${privid_sta}"
-    if [ ! -z "$privid_sta" ]; then
-	printf "Error: couldn't delete private ID '${private_id}'!\n"
-	exit 1
-    fi
-
-else
-    printf "Error: IMPI user '${private_id}' does not exist!\n"
-    exit 1
 fi
 
-
+#
+# Delete public ID
+#
+#echo curl -s -X DELETE http://${HSPROV}/irs/${irs_uuid}
+irs_sta=$(curl -s -X DELETE http://${HSPROV}/irs/${irs_uuid})
+#echo "irs_sta=${irs_sta}"
+if [ ! -z "$irs_sta" ]; then
+    printf "Error: couldn't delete IRS!\n"
+    if [ $force -eq 0 ]; then
+	exit 1
+    fi
+fi
+#echo curl -m5 -s -X DELETE http://${HSPROV}/private/${private_id}
+privid_sta=$(curl -m5 -s -X DELETE http://${HSPROV}/private/${private_id})
+#echo "privid_sta=${privid_sta}"
+if [ ! -z "$privid_sta" ]; then
+    printf "Error: couldn't delete private ID '${private_id}'!\n"
+    if [ $force -eq 0 ]; then
+	exit 1
+    fi
+fi
