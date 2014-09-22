@@ -62,9 +62,13 @@ def configure_logging(task_id):
 
 import twisted.python
 
-class LevelLogObserver(twisted.python.log.FileLogObserver):
-    def __init__(self, level=logging.ERROR):
-        self.logLevel = level
+class TwistedLogObserver(twisted.python.log.FileLogObserver):
+    """
+    A log observer for catching errors logged in the twisted package
+    so that we can send them to syslog.
+    """
+    def __init__(self):
+        self.logLevel = logging.ERROR
 
     def emit(self,eventDict):
         """Custom emit for FileLogObserver"""
@@ -86,7 +90,7 @@ class LevelLogObserver(twisted.python.log.FileLogObserver):
             msgStr = twisted.python.log._safeFormat("twisted %(text)s\n", fmtDict)
             TWISTED_ERROR.log(msgStr)
 
-logger=LevelLogObserver()
+logger=TwistedLogObserver()
 twisted.python.log.addObserver(logger.emit)
 
 def configure_syslog():
