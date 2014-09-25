@@ -54,7 +54,7 @@ from metaswitch.crest import PDLog
 _log = logging.getLogger("crest")
 
 def shutdown_before():
-    metaswitch.crest.PDLog.CREST_SHUTTING_DOWN.log()
+    PDLog.CREST_SHUTTING_DOWN.log()
     api.base.shutdownStats()
 
 def create_application():
@@ -109,7 +109,7 @@ def standalone():
     logging_config.configure_logging(args.process_id)
     logging_config.configure_syslog()
 
-    metaswitch.crest.PDLog.CREST_STARTING.log()
+    PDLog.CREST_STARTING.log()
 
     # setup accumulators and counters for statistics gathering
     api.base.setupStats(args.process_id, args.worker_processes)
@@ -120,7 +120,7 @@ def standalone():
         # Cyclone
         http_port = reactor.listenTCP(settings.HTTP_PORT, application, interface=settings.LOCAL_IP)
         _log.info("Listening for HTTP on port %s", settings.HTTP_PORT)
-        metaswitch.crest.PDLog.CREST_UP.log()
+        PDLog.CREST_UP.log()
 
         for process_id in range(1, args.worker_processes):
             reactor.spawnProcess(None, executable, [executable, __file__,

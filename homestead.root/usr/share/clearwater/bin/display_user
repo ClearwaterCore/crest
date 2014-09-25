@@ -2,15 +2,21 @@
 
 mydir=$(cd `dirname $0`;pwd)
 cwd=$(pwd)
+short=0
+keep_going=0
+quiet=0
 
 cmdname=$0
 
 usage()
 {
     printf "\
-Usage: $cmdname [OPTION...] <directory-number> <domain>\n\
+Usage: $cmdname [OPTION...] <directory-number>[..<directory-number>] <domain>\n\
 \n\
 Options:\n\
+  -k, --keep-going  keep going on errors\n\
+  -q, --quiet       suppress errors when ignoring them\n\
+  -s, --short       less verbose display\n\
   -h, --help        display this usage\n"
 
     printf "\n"
@@ -26,7 +32,7 @@ error()
     usage
 }
 
-params="$(getopt -o h -l help --name $cmdname -- "$@")"
+params="$(getopt -o hskq -l help,short,keep-going,quiet --name $cmdname -- "$@")"
 
 if [ $? -ne 0 ]
 then
@@ -42,6 +48,18 @@ do
 	--)
 	shift
 	break
+	;;
+	-s|--short)
+	let "short=1"
+	shift
+	;;
+	-q|--quiet)
+	let "quiet=1"
+	shift
+	;;
+	-k|--keep-going)
+	let "keep_going=1"
+	shift
 	;;
         -h|--help)
         usage
@@ -92,38 +110,87 @@ fi
 shift
 
 HSPROV=${LOCAL_IP}:${HTTP_PORT}
-public_id=sip:${USER}@${DOMAIN}
-private_id=${USER}@${DOMAIN}
-
-if [ "$(curl -s http://${HSPROV}/ping 2>&1)" != "OK" ]; then
-    printf "Error: can't contact homestead-prov @ http://${HSPROV}!\n"
-    exit 1
-fi
-
-impu=$(curl -s http://${HSPROV}/impu/${public_id} 2>&1)
-if [[ ${impu:0:1} == "<" ]]; then
-    if [[ "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
-	public_id=${public_id}
-
-	service_profile=$(curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|grep "Location:"|awk '{print $2}'|tr '[[:space:]]' ' '|sed -e 's#[[:space:]]##g')
-	iFC=$(curl -s http://${HSPROV}${service_profile}/filter_criteria)
-
-	digest=$(curl -s http://${HSPROV}/impi/${private_id}/digest|python -c 'import json,sys;obj=json.load(sys.stdin);print obj["digest_ha1"]' 2>&1)
-
-	echo "HA1 digest:"
-        echo "  $digest"
-	echo "iFC:"
-	(
-	    echo ${iFC}|python -c 'import xml.dom.minidom, sys; print xml.dom.minidom.parse(sys.stdin).toprettyxml()'|sed -e '/^[[:space:]]*$/d'
-	) 2>&1 | while IFS='' read -r line; do
-	    printf "   %s\n" "$line"
-	done
-    else
-	printf "Error: no IMPI user ${private_id}\n"
+_USERS=(${USER//,/ })
+USERS=()
+for _USER in ${_USERS[@]}; do
+    seq_USERS=(${_USER//./ })
+    if [ ${#seq_USERS[@]} -eq 1 ]; then
+        seq_USERS[1]=${seq_USERS[0]}
+    fi
+    if [[ "${seq_USERS[0]}" =~ [^0-9] ]]; then
+	printf "Error: invalid user range - ${seq_USERS[0]}..${seq_USERS[1]}!\n"
 	exit 1
     fi
-else
-    printf "Error: no IMPU user '${public_id}'\n"
-    exit 1
-fi
+    if [[ "${seq_USERS[1]}" =~ [^0-9] ]]; then
+	printf "Error: invalid user range - ${seq_USERS[0]}..${seq_USERS[1]}!\n"
+	exit 1
+    fi
+    if [ ${seq_USERS[0]} -gt ${seq_USERS[1]} ]; then
+	printf "Error: invalid user range - ${seq_USERS[0]}..${seq_USERS[1]}!\n"
+	exit 1
+    fi
+    USERS[${#USERS[@]}]="{${seq_USERS[0]}..${seq_USERS[1]}}"
+done
 
+for USER in $(eval echo ${USERS[@]}); do
+    public_id=sip:${USER}@${DOMAIN}
+    private_id=${USER}@${DOMAIN}
+
+    if [ "$(curl -m5 -s http://${HSPROV}/ping 2>&1)" != "OK" ]; then
+	printf "Error: can't contact homestead-prov @ http://${HSPROV}!\n"
+	exit 1
+    fi
+
+    impu=$(curl -m5 -s http://${HSPROV}/impu/${public_id} 2>&1)
+    if [[ ${impu:0:1} == "<" ]]; then
+	if [[ "$(curl -m5 -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
+	    public_id=${public_id}
+
+	    service_profile=$(curl -m5 -s -D - http://${HSPROV}/public/${public_id}/service_profile)
+	    if [ $? -ne 0 ]; then
+		if [[ $keep_going == 0 || ( $keep_going != 0 && $quiet == 0 ) ]]; then
+		    printf "Error: couldn't retrieve server profile for user ${private_id}\n"
+		fi
+		if [ $keep_going -eq 0 ]; then
+		    exit 1
+		fi
+	    fi
+	    service_profile=$(printf "%s" "${service_profile}"|grep "Location:"|awk '{print $2}'|tr '[[:space:]]' ' '|sed -e 's#[[:space:]]##g')
+	    iFC=$(curl -m5 -s http://${HSPROV}${service_profile}/filter_criteria)
+
+	    digest=$(curl -m5 -s http://${HSPROV}/impi/${private_id}/digest|python -c 'import json,sys;obj=json.load(sys.stdin);print obj["digest_ha1"]' 2>&1)
+
+	    if [ $short -eq 0 ]; then
+		echo ${private_id}:
+		echo "  HA1 digest:"
+		echo "    $digest"
+		echo "  iFC:"
+		(
+		    if [ -z "$iFC" ]; then
+			printf "Error: no iFC for user ${private_id}\n"
+		    else
+			echo ${iFC}|python -c 'import xml.dom.minidom, sys; print xml.dom.minidom.parse(sys.stdin).toprettyxml()'|sed -e '/^[[:space:]]*$/d'
+		    fi
+		) 2>&1 | while IFS='' read -r line; do
+		    printf "     %s\n" "$line"
+		done
+	    else
+		printf "%s:%s\n" "${private_id}" "${digest}"
+	    fi
+	else
+	    if [[ $keep_going == 0 || ( $keep_going != 0 && $quiet == 0 ) ]]; then
+		printf "Error: no IMPI user ${private_id}\n"
+	    fi
+	    if [ $keep_going -eq 0 ]; then
+		exit 1
+	    fi
+	fi
+    else
+	if [[ $keep_going == 0 || ( $keep_going != 0 && $quiet == 0 ) ]]; then
+	    printf "Error: no IMPU user '${public_id}'\n"
+	fi
+	if [ $keep_going -eq 0 ]; then
+	    exit 1
+	fi
+    fi
+done

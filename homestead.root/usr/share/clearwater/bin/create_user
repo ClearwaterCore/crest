@@ -2,6 +2,7 @@
 
 mydir=$(cd `dirname $0`;pwd)
 cwd=$(pwd)
+quiet=0
 
 cmdname=$0
 export "PREFIX=123"
@@ -9,11 +10,12 @@ export "PREFIX=123"
 usage()
 {
     printf "\
-Usage: $cmdname [OPTION...] <directory-number> <domain> <password>\n\
+Usage: $cmdname [OPTION...] <directory-number>[...<directory-number>] <domain> <password>\n\
 \n\
 Options:\n\
   --prefix PREFIX   twin-prefix (default: 123)\n\
   --ifc iFC-FILE    XML file containing the iFC\n\
+  -q, --quiet       don't display the user\n\
   -h, --help        display this usage\n"
 
     printf "\n"
@@ -29,7 +31,7 @@ error()
     usage
 }
 
-params="$(getopt -o h -l help,prefix:,ifc: --name $cmdname -- "$@")"
+params="$(getopt -o hq -l help,prefix:,ifc:,quiet --name $cmdname -- "$@")"
 
 if [ $? -ne 0 ]
 then
@@ -54,6 +56,10 @@ do
 	shift
 	break
 	;;
+        -q|--quiet)
+        let "quiet=1"
+	shift
+        ;;
         -h|--help)
         usage
         ;;
@@ -133,103 +139,126 @@ print xml.dom.minidom.parse(sys.stdin).toprettyxml()\
 fi
 
 HSPROV=${LOCAL_IP}:${HTTP_PORT}
-public_id=sip:${USER}@${DOMAIN}
-private_id=${USER}@${DOMAIN}
+_USERS=(${USER//,/ })
+USERS=()
+for _USER in ${_USERS[@]}; do
+    seq_USERS=(${_USER//./ })
+    if [ ${#seq_USERS[@]} -eq 1 ]; then
+        seq_USERS[1]=${seq_USERS[0]}
+    fi
+    if [[ "${seq_USERS[0]}" =~ [^0-9] ]]; then
+	printf "Error: invalid user range - ${seq_USERS[0]}..${seq_USERS[1]}!\n"
+	exit 1
+    fi
+    if [[ "${seq_USERS[1]}" =~ [^0-9] ]]; then
+	printf "Error: invalid user range - ${seq_USERS[0]}..${seq_USERS[1]}!\n"
+	exit 1
+    fi
+    if [ ${seq_USERS[0]} -gt ${seq_USERS[1]} ]; then
+	printf "Error: invalid user range - ${seq_USERS[0]}..${seq_USERS[1]}!\n"
+	exit 1
+    fi
+    USERS[${#USERS[@]}]="{${seq_USERS[0]}..${seq_USERS[1]}}"
+done
 
-if [ "$(curl -s http://${HSPROV}/ping 2>&1)" != "OK" ]; then
-    printf "Error: can't contact homestead-prov @ http://${HSPROV}!\n"
-    exit 1
-fi
+for USER in $(eval echo ${USERS[@]}); do
+    public_id=sip:${USER}@${DOMAIN}
+    private_id=${USER}@${DOMAIN}
 
-impu=$(curl -s http://${HSPROV}/impu/${public_id} 2>&1)
-if [[ ${impu:0:1} == "<" ]]; then
-    printf "Error: IMPU user '${public_id}' already exists!\n"
-    exit 1
-fi
-  
-if [[ "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
-    printf "Error: IMPI user '${private_id}' already exists!\n"
-    exit 1
-fi
+    if [ "$(curl -s http://${HSPROV}/ping 2>&1)" != "OK" ]; then
+	printf "Error: can't contact homestead-prov @ http://${HSPROV}!\n"
+	exit 1
+    fi
 
-#
-# Create the private ID
-#
-new_digest=$(
-    printf "${private_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}'
-)
-json_digest="{\"digest_ha1\": \"${new_digest}\", \"realm\": \"${DOMAIN}\"}"
-#echo "json_digest=${json_digest}"
-put_sta=$(
-    printf "%s\n" "${json_digest}" |\
+    impu=$(curl -s http://${HSPROV}/impu/${public_id} 2>&1)
+    if [[ ${impu:0:1} == "<" ]]; then
+	printf "Error: IMPU user '${public_id}' already exists!\n"
+	exit 1
+    fi
+    
+    if [[ "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
+	printf "Error: IMPI user '${private_id}' already exists!\n"
+	exit 1
+    fi
+
+    #
+    # Create the private ID
+    #
+    new_digest=$(
+	printf "${private_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}'
+    )
+    json_digest="{\"digest_ha1\": \"${new_digest}\", \"realm\": \"${DOMAIN}\"}"
+    #echo "json_digest=${json_digest}"
+    put_sta=$(
+	printf "%s\n" "${json_digest}" |\
     curl -s -X PUT -d @- http://${HSPROV}/private/${private_id}
-)
-if [ ! -z "$put_sta" ]; then
-    printf "Error: couldn't create IMPU user '${public_id}'!\n"
-    exit 1
-fi
+    )
+    if [ ! -z "$put_sta" ]; then
+	printf "Error: couldn't create IMPU user '${public_id}'!\n"
+	exit 1
+    fi
 
-#
-# Create IRS
-#
-irs_uuid=$(
-    curl -s -D - -X POST http://${HSPROV}/irs|\
+    #
+    # Create IRS
+    #
+    irs_uuid=$(
+	curl -s -D - -X POST http://${HSPROV}/irs|\
     grep "Location:"|awk '{print $2}'|\
     sed -e 's#[[:space:]]##g'|\
     sed -e 's#/irs/##'
-)
-#echo "irs_uuid=$irs_uuid"
+    )
+    #echo "irs_uuid=$irs_uuid"
 
-#
-# Associate the private ID with the new IRS
-#
-#echo curl -s -X PUT http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets/${irs_uuid}
-rsp=$(
-    curl -s -X PUT http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets/${irs_uuid}
-)
-if [ ! -z $rsp ]; then
-    printf "Error: couldn't associate '${private_id}' with IRS '${irs_uuid}!\n"
-    ${mydir}/delete_user -fq ${USER} ${DOMAIN}
-    exit 1
-fi
+    #
+    # Associate the private ID with the new IRS
+    #
+    #echo curl -s -X PUT http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets/${irs_uuid}
+    rsp=$(
+	curl -s -X PUT http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets/${irs_uuid}
+    )
+    if [ ! -z $rsp ]; then
+	printf "Error: couldn't associate '${private_id}' with IRS '${irs_uuid}!\n"
+	${mydir}/delete_user -fq ${USER} ${DOMAIN}
+	exit 1
+    fi
 
-#
-# Create the service profile
-#
-#echo curl -s -X POST http://${HSPROV}/irs/${irs_uuid}/service_profiles
-sp_uuid=$(
-    curl -s -D - -X POST http://${HSPROV}/irs/${irs_uuid}/service_profiles|\
+    #
+    # Create the service profile
+    #
+    #echo curl -s -X POST http://${HSPROV}/irs/${irs_uuid}/service_profiles
+    sp_uuid=$(
+	curl -s -D - -X POST http://${HSPROV}/irs/${irs_uuid}/service_profiles|\
     grep "Location:"|\
     awk '{print $2}'|\
     sed -e 's#[[:space:]]##g'|\
     sed -e 's#/irs/.*/service_profiles/##'
-)
-#echo "sp_uuid=$sp_uuid"
+    )
+    #echo "sp_uuid=$sp_uuid"
 
-#
-# Create public ID
-#
-pubid_sta=$(
-    printf "<PublicIdentity><Identity>%s</Identity></PublicIdentity>\n" "${public_id}"|\
+    #
+    # Create public ID
+    #
+    pubid_sta=$(
+	printf "<PublicIdentity><Identity>%s</Identity></PublicIdentity>\n" "${public_id}"|\
     curl -s -X PUT -d @- http://${HSPROV}/irs/${irs_uuid}/service_profiles/${sp_uuid}/public_ids/${public_id}
-)
-if [ ! -z $pubid_sta ]; then
-    printf "Error: couldn't create public ID '${public_id}'!\n"
-    ${mydir}/delete_user -fq ${USER} ${DOMAIN}
-    exit 1
-fi
+    )
+    if [ ! -z $pubid_sta ]; then
+	printf "Error: couldn't create public ID '${public_id}'!\n"
+	${mydir}/delete_user -fq ${USER} ${DOMAIN}
+	exit 1
+    fi
 
-#
-# Set iFC
-#
-service_profile=$(
-    curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
+    #
+    # Set iFC
+    #
+    service_profile=$(
+	curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
     grep "Location:"|\
     awk '{print $2}'|\
     tr '[[:space:]]' ' '|sed -e 's#[[:space:]]##g'
-)
-if [ -z $IFC ]; then
-    cat > $$.iFC <<'EOF'
+    )
+    if [ -z $IFC ]; then
+	    cat > $$.iFC <<'EOF'
 <?xml version="1.0" ?>
 <ServiceProfile>
   <InitialFilterCriteria>
@@ -268,23 +297,26 @@ if [ -z $IFC ]; then
   </InitialFilterCriteria>
 </ServiceProfile>
 EOF
-else
-    cat $IFC > $$.iFC
-fi
+    else
+	cat $IFC > $$.iFC
+    fi
 
-sed -ie "s#\${DOMAIN}#${DOMAIN}#g" $$.iFC
-sed -ie "s#\${PREFIX}#${PREFIX}#g" $$.iFC
-
-ifc_sta=$(
-    cat $$.iFC|\
+    sed -ie "s#\${DOMAIN}#${DOMAIN}#g" $$.iFC
+    sed -ie "s#\${PREFIX}#${PREFIX}#g" $$.iFC
+    
+    ifc_sta=$(
+	cat $$.iFC|\
     curl -s -X PUT -d @- http://${HSPROV}${service_profile}/filter_criteria
-)
-if [ ! -z $ifc_sta ]; then
-    printf "Error: couldn't update iFC!\n"
-    ${mydir}/delete_user -fq ${USER} ${DOMAIN}
-    exit 1
-fi
+    )
+    if [ ! -z $ifc_sta ]; then
+	printf "Error: couldn't update iFC!\n"
+	${mydir}/delete_user -fq ${USER} ${DOMAIN}
+	exit 1
+    fi
 
-rm -f $$.iFC*
+    rm -f $$.iFC*
 
-${mydir}/display_user ${USER} ${DOMAIN}
+    if [ $quiet -eq 0 ];then
+	${mydir}/display_user ${USER} ${DOMAIN}
+    fi    
+done

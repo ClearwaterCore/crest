@@ -2,15 +2,17 @@
 
 mydir=$(cd `dirname $0`;pwd)
 cwd=$(pwd)
+quiet=0
 
 cmdname=$0
 
 usage()
 {
     printf "\
-Usage: $cmdname [OPTION...] <directory-number> <domain> <password>\n\
+Usage: $cmdname [OPTION...] <directory-number>[...<directory-number>] <domain> <password>\n\
 \n\
 Options:\n\
+  -q, --quiet       don't display the user\n\
   -h, --help        display this usage\n"
 
     printf "\n"
@@ -26,7 +28,7 @@ error()
     usage
 }
 
-params="$(getopt -o h -l help --name $cmdname -- "$@")"
+params="$(getopt -o hq -l help,quiet --name $cmdname -- "$@")"
 
 if [ $? -ne 0 ]
 then
@@ -43,6 +45,10 @@ do
 	shift
 	break
 	;;
+        -q|--quiet)
+        let "quiet=1"
+	shift
+        ;;
         -h|--help)
         usage
         ;;
@@ -106,47 +112,72 @@ fi
 shift
 
 HSPROV=${LOCAL_IP}:${HTTP_PORT}
-public_id=sip:${USER}@${DOMAIN}
-private_id=${USER}@${DOMAIN}
-
-if [ "$(curl -s http://${HSPROV}/ping 2>&1)" != "OK" ]; then
-    printf "Error: can't contact homestead-prov @ http://${HSPROV}!\n"
-    exit 1
-fi
-
-impu=$(curl -s http://${HSPROV}/impu/${public_id} 2>&1)
-if [[ ${impu:0:1} == "<" ]]; then
-    if [[ "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
-	public_id=${public_id}
-
-	service_profile=$(
-	    curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
-            grep "Location:"|\
-            awk '{print $2}'|\
-            tr '[[:space:]]' ' '|\
-            sed -e 's#[[:space:]]##g'
-        )
-
-	new_digest=$(
-	    printf "${private_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}'
-	)
-	json_digest="{\"digest_ha1\": \"${new_digest}\", \"realm\": \"${DOMAIN}\"}"
-	put_sta=$(
-	    printf "%s\n" "${json_digest}"|\
-            curl -s curl -X PUT -d @- http://${HSPROV}/private/${private_id}
-	)
-	if [ ! -z $put_sta ]; then
-	    printf "Error: couldn't update password!\n"
-	    exit 1
-	fi
-
-	${mydir}/display_user ${USER} ${DOMAIN}
-    else
-	printf "Error: no IMPI user ${private_id}\n"
+_USERS=(${USER//,/ })
+USERS=()
+for _USER in ${_USERS[@]}; do
+    seq_USERS=(${_USER//./ })
+    if [ ${#seq_USERS[@]} -eq 1 ]; then
+        seq_USERS[1]=${seq_USERS[0]}
+    fi
+    if [[ "${seq_USERS[0]}" =~ [^0-9] ]]; then
+	printf "Error: invalid user range - ${seq_USERS[0]}..${seq_USERS[1]}!\n"
 	exit 1
     fi
-else
-    printf "Error: no IMPU user '${public_id}'\n"
-    exit 1
-fi
+    if [[ "${seq_USERS[1]}" =~ [^0-9] ]]; then
+	printf "Error: invalid user range - ${seq_USERS[0]}..${seq_USERS[1]}!\n"
+	exit 1
+    fi
+    if [ ${seq_USERS[0]} -gt ${seq_USERS[1]} ]; then
+	printf "Error: invalid user range - ${seq_USERS[0]}..${seq_USERS[1]}!\n"
+	exit 1
+    fi
+    USERS[${#USERS[@]}]="{${seq_USERS[0]}..${seq_USERS[1]}}"
+done
 
+for USER in $(eval echo ${USERS[@]}); do
+    public_id=sip:${USER}@${DOMAIN}
+    private_id=${USER}@${DOMAIN}
+
+    if [ "$(curl -s http://${HSPROV}/ping 2>&1)" != "OK" ]; then
+	printf "Error: can't contact homestead-prov @ http://${HSPROV}!\n"
+	exit 1
+    fi
+
+    impu=$(curl -s http://${HSPROV}/impu/${public_id} 2>&1)
+    if [[ ${impu:0:1} == "<" ]]; then
+	if [[ "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
+	    public_id=${public_id}
+
+	    service_profile=$(
+		curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
+                grep "Location:"|\
+                awk '{print $2}'|\
+                tr '[[:space:]]' ' '|\
+                sed -e 's#[[:space:]]##g'
+            )
+
+	    new_digest=$(
+		printf "${private_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}'
+	    )
+	    json_digest="{\"digest_ha1\": \"${new_digest}\", \"realm\": \"${DOMAIN}\"}"
+	    put_sta=$(
+		printf "%s\n" "${json_digest}"|\
+                curl -s curl -X PUT -d @- http://${HSPROV}/private/${private_id}
+	    )
+	    if [ ! -z $put_sta ]; then
+		printf "Error: couldn't update password!\n"
+		exit 1
+	    fi
+
+	    if [ $quiet -eq 0 ];then
+		${mydir}/display_user ${USER} ${DOMAIN}
+	    fi
+        else
+	    printf "Error: no IMPI user ${private_id}\n"
+	    exit 1
+	fi
+    else
+        printf "Error: no IMPU user '${public_id}'\n"
+	exit 1
+    fi
+done

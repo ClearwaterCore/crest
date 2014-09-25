@@ -88,7 +88,7 @@ class TwistedLogObserver(twisted.python.log.FileLogObserver):
         if level >= self.logLevel:
             fmtDict = {'text': text.replace("\n", "\n\t")}
             msgStr = twisted.python.log._safeFormat("twisted %(text)s\n", fmtDict)
-            TWISTED_ERROR.log(msgStr)
+            PDLog.TWISTED_ERROR.log(msgStr)
 
 logger=TwistedLogObserver()
 twisted.python.log.addObserver(logger.emit)
