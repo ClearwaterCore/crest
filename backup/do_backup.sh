@@ -81,12 +81,19 @@ nodetool -h localhost -p 7199 snapshot $KEYSPACE
 for t in $DATA_DIR/$KEYSPACE/*
 do
   TABLE=`basename $t`
-  for s in $DATA_DIR/$KEYSPACE/$TABLE/snapshots/*
-  do
-    SNAPSHOT=`basename $s`
-    mkdir -p $BACKUP_DIR/$SNAPSHOT/$TABLE
-    cp -al $DATA_DIR/$KEYSPACE/$TABLE/snapshots/$SNAPSHOT/* $BACKUP_DIR/$SNAPSHOT/$TABLE
-  done
+  if [ -d $DATA_DIR/$KEYSPACE/$TABLE/snapshots ]; then
+      for s in $DATA_DIR/$KEYSPACE/$TABLE/snapshots/*
+      do
+	  SNAPSHOT=`basename $s`
+	  mkdir -p $BACKUP_DIR/$SNAPSHOT/$TABLE
+	  cp -al $DATA_DIR/$KEYSPACE/$TABLE/snapshots/$SNAPSHOT/* $BACKUP_DIR/$SNAPSHOT/$TABLE
+      done
+  else
+      printf "Warning: snapshot of $KEYSPACE/$TABLE not taken!\n"
+  fi
 done
+
+#nodetool clearsnapshot $KEYSPACE -t $SNAPSHOT
+nodetool clearsnapshot $KEYSPACE
 
 echo "Backups can be found at: $BACKUP_DIR"

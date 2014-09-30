@@ -36,8 +36,11 @@
 import os
 import logging
 import logging.handlers
+import syslog
+import PDLog
 
 from metaswitch.crest import settings
+from metaswitch.crest.PDLog import PDLog
 
 def configure_logging(task_id):
     # Configure the root logger to accept all messages. We control the log level
@@ -56,3 +59,39 @@ def configure_logging(task_id):
     handler.setLevel(settings.LOG_LEVEL)
     root_log.addHandler(handler)
     print "Logging to %s" % log_file
+
+import twisted.python
+
+class TwistedLogObserver(twisted.python.log.FileLogObserver):
+    """
+    A log observer for catching errors logged in the twisted package
+    so that we can send them to syslog.
+    """
+    def __init__(self):
+        self.logLevel = logging.ERROR
+
+    def emit(self,eventDict):
+        """Custom emit for FileLogObserver"""
+
+        from metaswitch.crest import PDLog
+        from metaswitch.crest.PDLog import TWISTED_ERROR
+
+        text = twisted.python.log.textFromEventDict(eventDict)
+        if text is None:
+            return
+        if eventDict['isError']:
+            level = logging.ERROR
+        elif 'level' in eventDict:
+            level = eventDict['level']
+        else:
+            level = settings.LOG_LEVEL
+        if level >= self.logLevel:
+            fmtDict = {'text': text.replace("\n", "\n\t")}
+            msgStr = twisted.python.log._safeFormat("twisted %(text)s\n", fmtDict)
+            PDLog.TWISTED_ERROR.log(msgStr)
+
+logger=TwistedLogObserver()
+twisted.python.log.addObserver(logger.emit)
+
+def configure_syslog():
+    syslog.openlog(settings.LOG_FILE_PREFIX, logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL6)
