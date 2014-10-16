@@ -108,8 +108,10 @@ class PDLog4(PDLog):
     def log(self, v1, v2, v3, v4):
         syslog.syslog(self.level, ("%d (%s) " + self.msg) % (self.code, self.name, v1, v2, v3, v4))
 
+PDLog_start_core = 6000
+
 CREST_SHUTTING_DOWN = PDLog("CREST_SHUTTING_DOWN",
-    syslog.LOG_INFO, 1,
+    syslog.LOG_INFO, PDLog_start_core + 1,
     "Service '%s' is shutting down" % settings.LOG_FILE_PREFIX,
     "A 'shutdown' was requested by an external entity",
     "%s service is no longer available" % settings.LOG_FILE_PREFIX,
@@ -117,7 +119,7 @@ CREST_SHUTTING_DOWN = PDLog("CREST_SHUTTING_DOWN",
     )
 
 CREST_STARTING = PDLog("CREST_STARTING",
-    syslog.LOG_INFO, 2,
+    syslog.LOG_INFO, PDLog_start_core + 2,
     "Service '%s' is starting" % settings.LOG_FILE_PREFIX,
     "A 'start' was requested by an external entity",
     "%s service is starting" % settings.LOG_FILE_PREFIX,
@@ -125,7 +127,7 @@ CREST_STARTING = PDLog("CREST_STARTING",
     )
 
 CREST_UP = PDLog("CREST_UP",
-    syslog.LOG_INFO, 3,
+    syslog.LOG_INFO, PDLog_start_core + 3,
     "Service '%s' is up and listening for HTTP on port %s" % (settings.LOG_FILE_PREFIX, settings.HTTP_PORT),
     "A shutdown was requested by an external entity",
     "%s service is available" % settings.LOG_FILE_PREFIX,
@@ -133,7 +135,7 @@ CREST_UP = PDLog("CREST_UP",
     )
 
 API_UNKNOWN = PDLog1("API_UNKNOWN",
-    syslog.LOG_INFO, 4,
+    syslog.LOG_INFO, PDLog_start_core + 4,
     "Request for unknown API - %s",
     "A client made a request using an unknown API",
     "A 404 error is returned to the client",
@@ -141,7 +143,7 @@ API_UNKNOWN = PDLog1("API_UNKNOWN",
     )
 
 API_GUESSED_JSON = PDLog1("API_GUESSED_JSON",
-    syslog.LOG_WARNING, 5,
+    syslog.LOG_WARNING, PDLog_start_core + 5,
     "Guessed MIME type of uploaded data as JSON from client %s",
     "A client sent data of unspecified type, so it was assumed to be JSON",
     "JSON mime type is assumed",
@@ -149,7 +151,7 @@ API_GUESSED_JSON = PDLog1("API_GUESSED_JSON",
     )
 
 API_GUESSED_URLENCODED = PDLog1("API_GUESSED_URLENCODED",
-    syslog.LOG_WARNING, 6,
+    syslog.LOG_WARNING, PDLog_start_core + 6,
     "Guessed MIME type of uploaded data as URL encoded from client %s",
     "A client sent data of unspecified type, so it was assumed to be URL encoded",
     "URL encoding is assumed",
@@ -157,7 +159,7 @@ API_GUESSED_URLENCODED = PDLog1("API_GUESSED_URLENCODED",
     )
 
 API_OVERLOADED = PDLog("API_OVERLOADED",
-    syslog.LOG_INFO, 7,
+    syslog.LOG_INFO, PDLog_start_core + 7,
     "Service '%s' has become overloaded and rejecting requests" % settings.LOG_FILE_PREFIX,
     "The service has received too many requests and has become overloaded",
     "Requests are being rejected",
@@ -165,7 +167,7 @@ API_OVERLOADED = PDLog("API_OVERLOADED",
     )
 
 API_NOTOVERLOADED = PDLog("API_NOTOVERLOADED",
-    syslog.LOG_INFO, 8,
+    syslog.LOG_INFO, PDLog_start_core + 8,
     "Service '%s' is no longer overloaded and is accepting requests" % settings.LOG_FILE_PREFIX,
     "The service is no longer overloaded",
     "Requests are being accepted",
@@ -173,7 +175,7 @@ API_NOTOVERLOADED = PDLog("API_NOTOVERLOADED",
     )
 
 API_HTTPERROR = PDLog1("API_HTTPERROR",
-    syslog.LOG_WARNING, 9,
+    syslog.LOG_WARNING, PDLog_start_core + 9,
     "HTTP error: %s",
     "The service has received too many requests and has become overloaded",
     "The request has been rejected",
@@ -181,7 +183,7 @@ API_HTTPERROR = PDLog1("API_HTTPERROR",
     )
 
 API_UNCAUGHT_EXCEPTION = PDLog1("API_UNCAUGHT_EXCEPTION",
-    syslog.LOG_ERR, 10,
+    syslog.LOG_ERR, PDLog_start_core + 10,
     "Uncaught exception: %s",
     "An unexpected exception has occurred while processing a request",
     "The request has been rejected",
@@ -189,7 +191,7 @@ API_UNCAUGHT_EXCEPTION = PDLog1("API_UNCAUGHT_EXCEPTION",
     )
 
 TWISTED_ERROR = PDLog1("TWISTED_ERROR",
-    syslog.LOG_ERR, 11,
+    syslog.LOG_ERR, PDLog_start_core + 11,
     "Internal 'twisted' error: %s",
     "An unexpected internal error has occurred within the 'Twisted' component",
     "Unknown",
