@@ -80,9 +80,11 @@ class PrivateHandler(BaseHandler):
 
     @defer.inlineCallbacks
     def delete(self, private_id):
-        yield PrivateID(private_id).delete()
-        self.finish()
-
+        try:
+            yield PrivateID(private_id).delete()
+            self.finish()
+        except NotFoundException:
+            self.send_error(404)
 
 class PrivateAllIrsHandler(BaseHandler):
     @defer.inlineCallbacks
