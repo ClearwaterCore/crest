@@ -1,4 +1,6 @@
-# @file local_settings.py
+#!/bin/bash
+
+# @file update_simserv
 #
 # Project Clearwater - IMS in the Cloud
 # Copyright (C) 2013  Metaswitch Networks Ltd
@@ -32,41 +34,5 @@
 # under which the OpenSSL Project distributes the OpenSSL toolkit software,
 # as those licenses appear in the file LICENSE-OPENSSL.
 
-LOGS_DIR = "/var/log/homestead-prov"
-PID_FILE = "/var/run/homestead-prov.pid"
-LOG_FILE_PREFIX = "homestead-prov"
-PDLOG_RATE_LIMIT = 5 
-INSTALLED_HANDLERS = ["homestead"]
-HTTP_PORT = 8889
-XDM_DEFAULT_SIMSERVS_FILE = "/usr/share/clearwater/homestead/modules/common/metaswitch/common/default_simservs.xml"
-ZMQ_PORT = 6667
-
-# Debian install will pick this up from /etc/clearwater/config
-CASS_HOST = "localhost"
-
-# HSS configuration (by default, synchronization with the HSS is disabled)
-# Debian install will pick this up from /etc/clearwater/config
-HSS_IP = "0.0.0.0"
-HSS_PORT = 3868
-HSS_ENABLED = HSS_IP not in ["", "0.0.0.0"]
-
-# Debian install will pick this up from /etc/clearwater/config
-LOCAL_IP = MUST_BE_CONFIGURED
-SIP_DIGEST_REALM = MUST_BE_CONFIGURED
-SPROUT_HOSTNAME = MUST_BE_CONFIGURED
-PUBLIC_HOSTNAME = MUST_BE_CONFIGURED
-HS_HOSTNAME = MUST_BE_CONFIGURED
-LOWERCASE_UNKNOWN = False
-CCF = ""
-
-# We use this key to encrypt sensitive fields in the database that we can't
-# avoid storing.  In general, we'd like to store passwords as bcrypt hashes
-# but we can only do that if the password is sent to us by the user in the
-# clear.  Encrypting the password in the DB at least mitigates DB injection
-# attacks and prevents accidental exposure to staff.
-#
-# Debian install will pick this up from /etc/clearwater/config
-PASSWORD_ENCRYPTION_KEY = MUST_BE_CONFIGURED
-
-# Debian install will pick this up from /etc/clearwater/features
-LOCAL_PROVISIONING_ENABLED = MUST_BE_CONFIGURED
+mydir=$(cd `dirname $0`;pwd)
+. ${mydir}/create_simserv "$@"

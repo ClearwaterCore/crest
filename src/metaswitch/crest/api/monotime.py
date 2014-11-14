@@ -1,4 +1,4 @@
-# @file local_settings.py
+# @file monotime.py
 #
 # Project Clearwater - IMS in the Cloud
 # Copyright (C) 2013  Metaswitch Networks Ltd
@@ -32,41 +32,23 @@
 # under which the OpenSSL Project distributes the OpenSSL toolkit software,
 # as those licenses appear in the file LICENSE-OPENSSL.
 
-LOGS_DIR = "/var/log/homestead-prov"
-PID_FILE = "/var/run/homestead-prov.pid"
-LOG_FILE_PREFIX = "homestead-prov"
-PDLOG_RATE_LIMIT = 5 
-INSTALLED_HANDLERS = ["homestead"]
-HTTP_PORT = 8889
-XDM_DEFAULT_SIMSERVS_FILE = "/usr/share/clearwater/homestead/modules/common/metaswitch/common/default_simservs.xml"
-ZMQ_PORT = 6667
+import ctypes, os
 
-# Debian install will pick this up from /etc/clearwater/config
-CASS_HOST = "localhost"
+CLOCK_MONOTONIC_RAW = 4 # see <linux/time.h>
 
-# HSS configuration (by default, synchronization with the HSS is disabled)
-# Debian install will pick this up from /etc/clearwater/config
-HSS_IP = "0.0.0.0"
-HSS_PORT = 3868
-HSS_ENABLED = HSS_IP not in ["", "0.0.0.0"]
+class timespec(ctypes.Structure):
+    _fields_ = [
+        ('tv_sec', ctypes.c_long),
+        ('tv_nsec', ctypes.c_long)
+    ]
 
-# Debian install will pick this up from /etc/clearwater/config
-LOCAL_IP = MUST_BE_CONFIGURED
-SIP_DIGEST_REALM = MUST_BE_CONFIGURED
-SPROUT_HOSTNAME = MUST_BE_CONFIGURED
-PUBLIC_HOSTNAME = MUST_BE_CONFIGURED
-HS_HOSTNAME = MUST_BE_CONFIGURED
-LOWERCASE_UNKNOWN = False
-CCF = ""
+librt = ctypes.CDLL('librt.so.1', use_errno=True)
+clock_gettime = librt.clock_gettime
+clock_gettime.argtypes = [ctypes.c_int, ctypes.POINTER(timespec)]
 
-# We use this key to encrypt sensitive fields in the database that we can't
-# avoid storing.  In general, we'd like to store passwords as bcrypt hashes
-# but we can only do that if the password is sent to us by the user in the
-# clear.  Encrypting the password in the DB at least mitigates DB injection
-# attacks and prevents accidental exposure to staff.
-#
-# Debian install will pick this up from /etc/clearwater/config
-PASSWORD_ENCRYPTION_KEY = MUST_BE_CONFIGURED
-
-# Debian install will pick this up from /etc/clearwater/features
-LOCAL_PROVISIONING_ENABLED = MUST_BE_CONFIGURED
+def monotonic_time():
+    t = timespec()
+    if clock_gettime(CLOCK_MONOTONIC_RAW , ctypes.pointer(t)) != 0:
+        errno_ = ctypes.get_errno()
+        raise OSError(errno_, os.strerror(errno_))
+    return t.tv_sec + t.tv_nsec * 1e-9

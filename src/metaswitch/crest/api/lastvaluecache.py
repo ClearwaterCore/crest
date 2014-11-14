@@ -50,6 +50,10 @@ class LastValueCache:
         # Set up the cache.
         self.cache = {}
         self.zmq_address = "tcp://*:" + str(zmq_port)
+        self._shutdown = False
+
+    def shutdown(self):
+        self._shutdown = True
 
     def bind(self, p_id, worker_proc):
         context = zmq.Context()
@@ -88,16 +92,27 @@ class LastValueCache:
             self.forward()
 
     @defer.inlineCallbacks
+    def zmq_poll(self): 
+        # Continually poll for updates until we're told
+        # to shuwdown
+        while self._shutdown != True:
+            events = self.poller.poll(5000)
+            if events:
+                return events
+        return []
+
+    @defer.inlineCallbacks
     def last_cache(self):
         # Poll
-        d = threads.deferToThread(self.poller.poll)
+        d = threads.deferToThread(self.zmq_poll)
         answer = yield d
         defer.returnValue(answer)
 
     @defer.inlineCallbacks
     def forward(self):
-        # Continually poll for updates
-        while True:
+        # Continually poll for updates until we're told
+        # to shuwdown
+        while self._shutdown != True:
             # Poll returns a dictionary of sockets
             answer = yield self.last_cache()
 
