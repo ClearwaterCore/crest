@@ -47,10 +47,11 @@ from twisted.python.failure import Failure
 from telephus.cassandra.ttypes import TimedOutException as CassandraTimeout
 from metaswitch.common import utils
 from metaswitch.crest import settings
-from metaswitch.crest.api.statistics import Accumulator, Counter
+from metaswitch.crest.api.statistics import Accumulator, Counter, monotonic_time
 from metaswitch.crest.api.DeferTimeout import TimeoutError
 from metaswitch.crest.api.exceptions import HSSOverloaded, HSSConnectionLost, HSSStillConnecting, UserNotIdentifiable, UserNotAuthorized
 from metaswitch.crest.api.lastvaluecache import LastValueCache
+from metaswitch.crest import PDLog
 
 _log = logging.getLogger("crest.api")
 
@@ -87,7 +88,7 @@ class LeakyBucket:
         self.max_size = max_size
         self.tokens = max_size
         self.rate = rate
-        self.replenish_time = time.time()
+        self.replenish_time = monotonic_time()
 
     def get_token(self):
         self.replenish_bucket()
@@ -104,7 +105,7 @@ class LeakyBucket:
         self.max_size = new_max_size
 
     def replenish_bucket(self):
-        replenish_time = time.time()
+        replenish_time = monotonic_time()
         self.tokens += self.rate * (replenish_time - self.replenish_time)
         self.replenish_time = replenish_time
         if self.tokens > self.max_size:
@@ -125,6 +126,7 @@ class LoadMonitor:
     NUM_DEV = 4
 
     def __init__(self, target_latency, max_bucket_size, init_token_rate, min_token_rate):
+        self.overloaded = False
         self.accepted = 0
         self.rejected = 0
         self.pending_count = 0
@@ -140,6 +142,9 @@ class LoadMonitor:
     def admit_request(self):
         if self.bucket.get_token():
             # Got a token from the bucket, so admit the request
+            if self.overloaded == True:
+                metaswitch.crest.api.PDlog.API_NOTOVERLOADED.log()
+                self.overloaded = False
             self.accepted += 1
             self.pending_count += 1
             queue_size_accumulator.accumulate(self.pending_count)
@@ -147,6 +152,9 @@ class LoadMonitor:
                 self.max_pending_count = self.pending_count
             return True
         else:
+            if self.overloaded == False:
+                metaswitch.crest.api.PDlog.API_OVERLOADED.log()
+                self.overloaded = True
             self.rejected += 1
             return False
 
@@ -212,6 +220,9 @@ def setupStats(p_id, worker_proc):
     incoming_requests.set_process_id(p_id)
     overload_counter.set_process_id(p_id)
 
+def shutdownStats():
+    zmq.shutdown()
+
 def _guess_mime_type(body):
     if (body == "null" or
         (body[0] == "{" and
@@ -219,9 +230,11 @@ def _guess_mime_type(body):
         (body[0] == "[" and
          body[-1] == "]")):
         _log.warning("Guessed MIME type of uploaded data as JSON. Client should specify.")
+        PDLog.API_GUESSED_JSON.log(self.request.remote_ip)
         return "json"
     else:
         _log.warning("Guessed MIME type of uploaded data as URL-encoded. Client should specify.")
+        PDLog.API_GUESSED_URLENCODED.log(self.request.remote_ip)
         return "application/x-www-form-urlencoded"
 
 
@@ -240,7 +253,7 @@ class BaseHandler(cyclone.web.RequestHandler):
         incoming_requests.increment()
 
         # timestamp the request
-        self._start = time.time()
+        self._start = monotonic_time()
         _log.info("Received request from %s - %s %s://%s%s" %
                    (self.request.remote_ip, self.request.method, self.request.protocol, self.request.host, self.request.uri))
         if not loadmonitor.admit_request():
@@ -257,7 +270,7 @@ class BaseHandler(cyclone.web.RequestHandler):
                     self.request.host,
                     self.request.uri))
 
-        latency = time.time() - self._start
+        latency = monotonic_time() - self._start
         loadmonitor.request_complete(latency)
 
         # Track the latency of the requests (in usec)
@@ -295,8 +308,10 @@ class BaseHandler(cyclone.web.RequestHandler):
             if e.log_message:
                 format = "%d %s: " + e.log_message
                 args = [e.status_code, self._request_summary()] + list(e.args)
+                PDLog.API_HTTPERROR.log(format % tuple(args))
                 _log.warning(format, *args)
             if e.status_code not in httplib.responses:
+                PDLog.API_HTTPERROR.log("bad status code %d for %s" % (e.status_code, self._request_summary()))
                 _log.warning("Bad HTTP status code: %d", e.status_code)
                 cyclone.web.RequestHandler._handle_request_exception(self, e)
             else:
@@ -318,6 +333,7 @@ class BaseHandler(cyclone.web.RequestHandler):
             _log.error("Uncaught exception %s\n%r", self._request_summary(), self.request)
             _log.error("Exception: %s" % repr(e))
             _log.error(err_traceback)
+            PDLog.API_UNCAUGHT_EXCEPTION.log("%s - %s" % (repr(e), self._request_summary()))
             utils.write_core_file(settings.LOG_FILE_PREFIX, traceback.format_exc())
             cyclone.web.RequestHandler._handle_request_exception(self, orig_e)
 
@@ -417,7 +433,7 @@ class BaseHandler(cyclone.web.RequestHandler):
         MAX_REQUEST_TIME = 0.5
 
         def wrapper(handler, *pos_args, **kwd_args):
-            if time.time() - handler._start > MAX_REQUEST_TIME:
+            if monotonic_time() - handler._start > MAX_REQUEST_TIME:
                 handler.send_error(503, "Request too old")
             else:
                 return func(handler, *pos_args, **kwd_args)
@@ -429,4 +445,12 @@ class UnknownApiHandler(BaseHandler):
     """
     def get(self):
         _log.info("Request for unknown API")
+        PDLog.API_UNKNOWN.log(
+            "%s://%s%s" %
+            (
+                self.request.protocol, 
+                self.request.host, 
+                self.request.uri
+            ))
+
         self.send_error(404, "Invalid API")

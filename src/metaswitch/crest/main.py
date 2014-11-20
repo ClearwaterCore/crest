@@ -34,10 +34,11 @@
 # under which the OpenSSL Project distributes the OpenSSL toolkit software,
 # as those licenses appear in the file LICENSE-OPENSSL.
 
-
+import metaswitch.crest
 import os
 import argparse
 import logging
+import syslog
 from sys import executable
 from socket import AF_INET
 
@@ -48,8 +49,13 @@ from twisted.internet import reactor
 from metaswitch.crest import api
 from metaswitch.crest import settings, logging_config
 from metaswitch.common import utils
+from metaswitch.crest import PDLog
 
 _log = logging.getLogger("crest")
+
+def shutdown_before():
+    PDLog.CREST_SHUTTING_DOWN.log()
+    api.base.shutdownStats()
 
 def create_application():
     app_settings = {
@@ -101,6 +107,9 @@ def standalone():
 
     # Setup logging
     logging_config.configure_logging(args.process_id)
+    logging_config.configure_syslog()
+
+    PDLog.CREST_STARTING.log()
 
     # setup accumulators and counters for statistics gathering
     api.base.setupStats(args.process_id, args.worker_processes)
@@ -109,8 +118,9 @@ def standalone():
         reactor.adoptStreamPort(args.shared_http_fd, AF_INET, application)
     else:
         # Cyclone
-        _log.info("Going to listen for HTTP on port %s", settings.HTTP_PORT)
         http_port = reactor.listenTCP(settings.HTTP_PORT, application, interface=settings.LOCAL_IP)
+        _log.info("Listening for HTTP on port %s", settings.HTTP_PORT)
+        PDLog.CREST_UP.log()
 
         for process_id in range(1, args.worker_processes):
             reactor.spawnProcess(None, executable, [executable, __file__,
@@ -118,6 +128,11 @@ def standalone():
                                  "--process-id", str(process_id)],
                                  childFDs={0: 0, 1: 1, 2: 2, http_port.fileno(): http_port.fileno()},
                                  env = os.environ)
+
+    # We need to catch the shutdown request so that we can properly stop
+    # the ZMQ interface; otherwise the reactor won't shutdown on a SIGTERM 
+    # and will be SIGKILLed when the service is stopped.
+    reactor.addSystemEventTrigger('before', 'shutdown', shutdown_before)
 
     # Kick off the reactor to start listening on configured ports
     reactor.run()

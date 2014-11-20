@@ -172,8 +172,7 @@ PROVISIONING_ROUTES = [
 ]
 
 ROUTES = CACHE_ROUTES
-if settings.LOCAL_PROVISIONING_ENABLED:
-    ROUTES += PROVISIONING_ROUTES
+ROUTES += PROVISIONING_ROUTES
 
 # List of all the tables used by homestead.
 TABLES = [IMPI, IMPU, PrivateID, IRS, ServiceProfile, PublicID]
