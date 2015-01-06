@@ -1,4 +1,4 @@
-# @file monotonic_time.py
+# @file monotime.py
 #
 # Project Clearwater - IMS in the Cloud
 # Copyright (C) 2014  Metaswitch Networks Ltd
