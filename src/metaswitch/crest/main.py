@@ -47,9 +47,9 @@ import cyclone.web
 import twisted.internet.address
 from twisted.internet import reactor
 
-from metaswitch.crest import api, logging_config
+from metaswitch.crest import api, syslogging_config
 from metaswitch.crest import settings
-from metaswitch.common import utils
+from metaswitch.common import utils, logging_config
 from metaswitch.crest import PDLog
 
 _log = logging.getLogger("crest")
@@ -111,7 +111,7 @@ def standalone():
 
     # Setup logging
     logging_config.configure_logging(args.process_id, settings)
-    logging_config.configure_syslog()
+    syslogging_config.configure_syslog()
 
     PDLog.CREST_STARTING.log()
 
