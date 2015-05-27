@@ -34,11 +34,12 @@
 # under which the OpenSSL Project distributes the OpenSSL toolkit software,
 # as those licenses appear in the file LICENSE-OPENSSL.
 
-
+import metaswitch.crest
 import os
 import argparse
 import logging
 from sys import executable, exit
+import syslog
 from socket import AF_INET
 from fcntl import flock, LOCK_EX, LOCK_NB
 
@@ -47,9 +48,10 @@ import cyclone.web
 import twisted.internet.address
 from twisted.internet import reactor
 
-from metaswitch.crest import api
+from metaswitch.crest import api, syslogging_config
 from metaswitch.crest import settings
 from metaswitch.common import utils, logging_config
+from metaswitch.crest import PDLog
 
 _log = logging.getLogger("crest")
 _lock_fd = None
@@ -72,6 +74,10 @@ def bind_safely(reactor, process_id, application):
     reactor.listenUNIX(unix_sock_name, application)
     return fd
 
+
+def shutdown_before():
+    PDLog.CREST_SHUTTING_DOWN.log()
+    api.base.shutdownStats()
 
 def create_application():
     app_settings = {
@@ -126,6 +132,9 @@ def standalone():
 
     # Setup logging
     logging_config.configure_logging(settings.LOG_LEVEL, settings.LOGS_DIR, settings.LOG_FILE_PREFIX, args.process_id)
+    syslogging_config.configure_syslog()
+
+    PDLog.CREST_STARTING.log()
 
     # setup accumulators and counters for statistics gathering
     api.base.setupStats(args.process_id, args.worker_processes)
@@ -136,6 +145,7 @@ def standalone():
         # normal operation and as a bridge from the default namespace to the signaling
         # namespace in a multiple interface configuration).
         _lock_fd = bind_safely(reactor, args.process_id, application)
+        PDLog.CREST_UP.log()
 
         if args.signaling_namespace and settings.PROCESS_NAME == "homer":
             # Running in signaling namespace as Homer, create TCP socket for XDMS requests
@@ -165,6 +175,11 @@ def standalone():
         # Create TCP socket if file descriptor was passed.
         if args.shared_http_tcp_fd:
             reactor.adoptStreamPort(args.shared_http_tcp_fd, AF_INET, application)
+
+    # We need to catch the shutdown request so that we can properly stop
+    # the ZMQ interface; otherwise the reactor won't shutdown on a SIGTERM 
+    # and will be SIGKILLed when the service is stopped.
+    reactor.addSystemEventTrigger('before', 'shutdown', shutdown_before)
 
     # Kick off the reactor to start listening on configured ports
     reactor.run()

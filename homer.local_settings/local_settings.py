@@ -36,6 +36,7 @@ PROCESS_NAME="homer"
 LOGS_DIR = "/var/log/homer"
 PID_FILE = "/var/run/homer.pid"
 LOG_FILE_PREFIX = "homer"
+PDLOG_RATE_LIMIT = 5 
 INSTALLED_HANDLERS = ["homer"]
 HTTP_PORT = 7888
 HTTP_UNIX = "/tmp/.homer-sock"
