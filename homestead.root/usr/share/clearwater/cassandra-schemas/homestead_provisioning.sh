@@ -16,9 +16,8 @@ if [ $? -ne 0 ]; then
 fi
 
 if [[ ! -e /var/lib/cassandra/data/${keyspace} ]]; then
-    printf "CREATE KEYSPACE ${keyspace} WITH strategy_class = 'SimpleStrategy' AND strategy_options:replication_factor = 2;" > /tmp/$$.cqlsh.in
     echo "CREATE KEYSPACE homestead_provisioning WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': 2};
-    $namespace_prefix cqlsh -2 < /tmp/$$.cqlsh.in
+USE homestead_provisioning;
 CREATE TABLE implicit_registration_sets (id uuid PRIMARY KEY, dummy text) WITH COMPACT STORAGE AND read_repair_chance = 1.0;
 CREATE TABLE service_profiles (id uuid PRIMARY KEY, irs text, initialfiltercriteria text) WITH COMPACT STORAGE AND read_repair_chance = 1.0;
 CREATE TABLE public (public_id text PRIMARY KEY, publicidentity text, service_profile text) WITH COMPACT STORAGE AND read_repair_chance = 1.0;
