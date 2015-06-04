@@ -36,6 +36,7 @@ PROCESS_NAME="homestead-prov"
 LOGS_DIR = "/var/log/homestead-prov"
 PID_FILE = "/var/run/homestead-prov.pid"
 LOG_FILE_PREFIX = "homestead-prov"
+PDLOG_RATE_LIMIT = 5 
 INSTALLED_HANDLERS = ["homestead"]
 HTTP_PORT = 8889
 HTTP_UNIX = "/tmp/.homestead-prov-sock"

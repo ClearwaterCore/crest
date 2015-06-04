@@ -1,7 +1,7 @@
-# @file monotime.py
+# @file logging_config.py
 #
 # Project Clearwater - IMS in the Cloud
-# Copyright (C) 2014  Metaswitch Networks Ltd
+# Copyright (C) 2013  Metaswitch Networks Ltd
 #
 # This program is free software: you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -32,23 +32,49 @@
 # under which the OpenSSL Project distributes the OpenSSL toolkit software,
 # as those licenses appear in the file LICENSE-OPENSSL.
 
-import ctypes, os
 
-CLOCK_MONOTONIC_RAW = 4 # see <linux/time.h>
+import os
+import logging
+import logging.handlers
+import syslog
+import PDLog
+import time
 
-class timespec(ctypes.Structure):
-    _fields_ = [
-        ('tv_sec', ctypes.c_long),
-        ('tv_nsec', ctypes.c_long)
-    ]
+from metaswitch.crest import settings
+from metaswitch.crest.PDLog import PDLog
 
-librt = ctypes.CDLL('librt.so.1', use_errno=True)
-clock_gettime = librt.clock_gettime
-clock_gettime.argtypes = [ctypes.c_int, ctypes.POINTER(timespec)]
+import twisted.python
 
-def monotonic_time():
-    t = timespec()
-    if clock_gettime(CLOCK_MONOTONIC_RAW , ctypes.pointer(t)) != 0:
-        errno_ = ctypes.get_errno()
-        raise OSError(errno_, os.strerror(errno_))
-    return t.tv_sec + t.tv_nsec * 1e-9
+class TwistedLogObserver(twisted.python.log.FileLogObserver):
+    """
+    A log observer for catching errors logged in the twisted package
+    so that we can send them to syslog.
+    """
+    def __init__(self):
+        self.logLevel = logging.ERROR
+
+    def emit(self,eventDict):
+        """Custom emit for FileLogObserver"""
+
+        from metaswitch.crest import PDLog
+        from metaswitch.crest.PDLog import TWISTED_ERROR
+
+        text = twisted.python.log.textFromEventDict(eventDict)
+        if text is None:
+            return
+        if eventDict['isError']:
+            level = logging.ERROR
+        elif 'level' in eventDict:
+            level = eventDict['level']
+        else:
+            level = settings.LOG_LEVEL
+        if level >= self.logLevel:
+            fmtDict = {'text': text.replace("\n", "\n\t")}
+            msgStr = twisted.python.log._safeFormat("twisted %(text)s\n", fmtDict)
+            PDLog.TWISTED_ERROR.log(msgStr)
+
+logger=TwistedLogObserver()
+twisted.python.log.addObserver(logger.emit)
+
+def configure_syslog():
+    syslog.openlog(settings.LOG_FILE_PREFIX, logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL6)
