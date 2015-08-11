@@ -395,6 +395,15 @@ class PublicID(ProvisioningModel):
         defer.returnValue(private_ids)
 
     @defer.inlineCallbacks
+    def get_all(self):
+        values = yield self.client.get_range_slices(column_family=self.cass_table,
+                                        start='',
+                                        finish='xxxxxxx',
+                                        count=1000000)
+        #_log.info("RKD %s" % str(values))
+        defer.returnValue(values)
+
+    @defer.inlineCallbacks
     def put_publicidentity(self, xml, sp_uuid):
         yield self.modify_columns({self.PUBLICIDENTITY: xml,
                                    self.SERVICE_PROFILE: sp_uuid})

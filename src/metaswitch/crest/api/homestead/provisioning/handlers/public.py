@@ -40,6 +40,16 @@ from ..models import PublicID
 
 JSON_PRIVATE_IDS = "private_ids"
 
+class AllPublicIDsHandler(BaseHandler):
+    @defer.inlineCallbacks
+    def get(self):
+        pub = PublicID("")
+        result = yield pub.get_all()
+        ids = sorted([x.key for x in result])
+        self.send_json({JSON_PRIVATE_IDS: ids})
+
+        self.finish()
+
 
 class PublicIDServiceProfileHandler(BaseHandler):
     @defer.inlineCallbacks
