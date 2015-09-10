@@ -243,7 +243,7 @@ while [ $i -lt ${#USERS[@]} ]; do
 		service_profile=$(curl -m5 -s -D - http://${HSPROV}/public/${public_id}/service_profile)
 		if [ $? -ne 0 ]; then
 		    if [[ $keep_going == 0 || ( $keep_going != 0 && $quiet == 0 ) ]]; then
-			printf "Error: couldn't retrieve server profile for user ${private_id}\n"
+			printf "Error: couldn't retrieve server profile for user ${rprivate_id}\n"
 		    fi
 		    if [ $keep_going -eq 0 ]; then
 			exit 1
@@ -265,7 +265,7 @@ while [ $i -lt ${#USERS[@]} ]; do
 		    echo "  iFC:"
 		    (
 			if [ -z "$iFC" ]; then
-			    printf "Error: no iFC for user ${private_id}\n"
+			    printf "Error: no iFC for user ${rprivate_id}\n"
 			else
 			    echo ${iFC}|python -c 'import xml.dom.minidom, sys; print xml.dom.minidom.parse(sys.stdin).toprettyxml()'|sed -e '/^[[:space:]]*$/d'
 			fi
@@ -277,7 +277,7 @@ while [ $i -lt ${#USERS[@]} ]; do
 		fi
 	    else
 		if [[ $keep_going == 0 || ( $keep_going != 0 && $quiet == 0 ) ]]; then
-		    printf "Error: no IMPI user ${private_id}\n"
+		    printf "Error: no IMPI user ${rprivate_id}\n"
 		fi
 		if [ $keep_going -eq 0 ]; then
 		    exit 1

@@ -252,7 +252,9 @@ while [ $i -lt ${#USERS[@]} ]; do
 	public_id=sip:${USER}@${DOMAIN}
 	rpublic_id=sip:${rUSER}@${DOMAIN}
 	private_id=${USER}@${DOMAIN}
+	rprivate_id=${rUSER}@${DOMAIN}
 	accession_id=${USER}
+	raccession_id=${rUSER}
 
 	if [ "$(curl -s http://${HSPROV}/ping 2>&1)" != "OK" ]; then
 	    printf "Error: can't contact homestead-prov @ http://${HSPROV}!\n"
@@ -270,7 +272,7 @@ while [ $i -lt ${#USERS[@]} ]; do
 	fi
 	
 	#    if [[ "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
-	#	printf "Error: IMPI user '${private_id}' already exists!\n"
+	#	printf "Error: IMPI user '${rprivate_id}' already exists!\n"
 	#	exit 1
 	#    fi
 
@@ -278,7 +280,7 @@ while [ $i -lt ${#USERS[@]} ]; do
 	# Create the private ID
 	#
 	new_digest=$(
-	    printf "%s" "${private_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}'
+	    printf "%s" "${rprivate_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}'
 	)
 	json_digest="{\"digest_ha1\": \"${new_digest}\", \"realm\": \"${DOMAIN}\"}"
 	#echo "json_digest=${json_digest}"
@@ -289,7 +291,7 @@ while [ $i -lt ${#USERS[@]} ]; do
 	)
 	#echo "put_sta=$put_sta"
 	if [ ! -z "$put_sta" ]; then
-	    printf "Error: couldn't create private user '${private_id}'!\n"
+	    printf "Error: couldn't create private user '${rprivate_id}'!\n"
 	    exit 1
 	fi
 
@@ -298,7 +300,7 @@ while [ $i -lt ${#USERS[@]} ]; do
 	    # Create the accession ID
 	    #
 	    new_digest=$(
-		printf "${accession_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}'
+		printf "${raccession_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}'
 	    )
 	    json_digest="{\"digest_ha1\": \"${new_digest}\", \"realm\": \"${DOMAIN}\"}"
 	    #echo "json_digest=${json_digest}"
@@ -307,7 +309,7 @@ while [ $i -lt ${#USERS[@]} ]; do
                 curl -s -X PUT -d @- http://${HSPROV}/private/${accession_id}
 	    )
 	    if [ ! -z "$put_sta" ]; then
-		printf "Error: couldn't create private user '${accession_id}'!\n"
+		printf "Error: couldn't create private user '${raccession_id}'!\n"
 		exit 1
 	    fi
 	fi
@@ -332,7 +334,7 @@ while [ $i -lt ${#USERS[@]} ]; do
 	)
 	#echo "rsp=$rsp"
 	if [ ! -z "$rsp" ]; then
-	    printf "Error: couldn't associate '${private_id}' with IRS '${irs_uuid}!\n"
+	    printf "Error: couldn't associate '${rprivate_id}' with IRS '${irs_uuid}!\n"
 	    ${mydir}/delete_user -fq ${rUSER} ${DOMAIN}
 	    exit 1
 	fi
@@ -346,7 +348,7 @@ while [ $i -lt ${#USERS[@]} ]; do
 		curl -s -X PUT http://${HSPROV}/private/${accession_id}/associated_implicit_registration_sets/${irs_uuid}
 	    )
 	    if [ ! -z "$rsp" ]; then
-		printf "Error: couldn't associate '${accession_id}' with IRS '${irs_uuid}!\n"
+		printf "Error: couldn't associate '${raccession_id}' with IRS '${irs_uuid}!\n"
 		${mydir}/delete_user -fq ${rUSER} ${DOMAIN}
 		exit 1
 	    fi
@@ -375,7 +377,7 @@ while [ $i -lt ${#USERS[@]} ]; do
 	)
 	#echo "pubid_sta=$pubid_sta"
 	if [ ! -z "$pubid_sta" ]; then
-	    printf "Error: couldn't create public ID '%s'!\n" "${public_id}"
+	    printf "Error: couldn't create public ID '%s'!\n" "${rpublic_id}"
 	    ${mydir}/delete_user -fq ${rUSER} ${DOMAIN}
 	    exit 1
 	fi

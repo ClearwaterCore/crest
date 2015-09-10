@@ -218,7 +218,9 @@ while [ $i -lt ${#USERS[@]} ]; do
 	USER=$plus$(printf "%0*d" "$SIZE" "$USER")
 
 	public_id=sip:${USER}@${DOMAIN}
+	rpublic_id=sip:${rUSER}@${DOMAIN}
 	private_id=${USER}@${DOMAIN}
+	rprivate_id=${rUSER}@${DOMAIN}
 
 	if [ "$(curl -s http://${HSPROV}/ping 2>&1)" != "OK" ]; then
 	    printf "Error: can't contact homestead-prov @ http://${HSPROV}!\n"
@@ -239,7 +241,7 @@ while [ $i -lt ${#USERS[@]} ]; do
 		)
 
 		new_digest=$(
-		    printf "%s" "${private_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}'
+		    printf "%s" "${rprivate_id}:${DOMAIN}:${PASSWORD}"|md5sum|awk '{print $1}'
 		)
 		json_digest="{\"digest_ha1\": \"${new_digest}\", \"realm\": \"${DOMAIN}\"}"
 		put_sta=$(
@@ -255,11 +257,11 @@ while [ $i -lt ${#USERS[@]} ]; do
 		    ${mydir}/display_user ${rUSER} ${DOMAIN}
 		fi
             else
-		printf "Error: no IMPI user ${private_id}\n"
+		printf "Error: no IMPI user ${rprivate_id}\n"
 		exit 1
 	    fi
 	else
-            printf "Error: no IMPU user '${public_id}'\n"
+            printf "Error: no IMPU user '${rpublic_id}'\n"
 	    exit 1
 	fi
     done
