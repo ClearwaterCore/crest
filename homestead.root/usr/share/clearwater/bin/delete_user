@@ -106,7 +106,7 @@ done
 if [[ -z $HSPROV && -d /usr/share/clearwater/homestead/env ]]; then
     local_settings=$(find /usr/share/clearwater/homestead/env -name local_settings.py)
     if [ ! -z "$local_settings" ]; then
-	eval $(python -c "execfile(\"$local_settings\"); print \"LOCAL_IP=%s\nHTTP_PORT=%s\nLOCAL_PROVISIONING_ENABLED=%s\nHSS_ENABLED=%s\n\" % (LOCAL_IP, HTTP_PORT, LOCAL_PROVISIONING_ENABLED, HSS_ENABLED)")
+	eval $(python -c "execfile(\"$local_settings\"); print \"LOCAL_IP=%s\nHTTP_PORT=%s\nHSS_ENABLED=%s\n\" % (LOCAL_IP, HTTP_PORT, HSS_ENABLED)")
 
 	if [ -z $LOCAL_IP ]; then
 	    printf "Error: no LOCAL_IP in local_settings!\n"
@@ -115,11 +115,6 @@ if [[ -z $HSPROV && -d /usr/share/clearwater/homestead/env ]]; then
 
 	if [ -z $HTTP_PORT ]; then
 	    printf "Error: no HTTP_PORT in local_settings!\n"
-	    exit 1
-	fi
-
-	if [ "$LOCAL_PROVISIONING_ENABLED" != "True" ]; then
-	    printf "Error: local provisioning is not enabled!\n"
 	    exit 1
 	fi
 
