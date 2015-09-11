@@ -116,7 +116,7 @@ done
 if [[ -z $HSPROV && -d /usr/share/clearwater/homestead/env ]]; then
     local_settings=$(find /usr/share/clearwater/homestead/env -name local_settings.py)
     if [ ! -z "$local_settings" ]; then
-	eval $(python -c "execfile(\"$local_settings\"); print \"LOCAL_IP=%s\nHTTP_PORT=%s\nLOCAL_PROVISIONING_ENABLED=%s\nHSS_ENABLED=%s\n\" % (LOCAL_IP, HTTP_PORT, LOCAL_PROVISIONING_ENABLED, HSS_ENABLED)")
+	eval $(python -c "execfile(\"$local_settings\"); print \"LOCAL_IP=%s\nHTTP_PORT=%s\nHSS_ENABLED=%s\n\" % (LOCAL_IP, HTTP_PORT, HSS_ENABLED)")
 
 	if [ -z $LOCAL_IP ]; then
 	    printf "Error: no LOCAL_IP in local_settings!\n"
@@ -125,11 +125,6 @@ if [[ -z $HSPROV && -d /usr/share/clearwater/homestead/env ]]; then
 
 	if [ -z $HTTP_PORT ]; then
 	    printf "Error: no HTTP_PORT in local_settings!\n"
-	    exit 1
-	fi
-
-	if [ "$LOCAL_PROVISIONING_ENABLED" != "True" ]; then
-	    printf "Error: local provisioning is not enabled!\n"
 	    exit 1
 	fi
 
@@ -392,60 +387,20 @@ while [ $i -lt ${#USERS[@]} ]; do
     tr '[[:space:]]' ' '|sed -e 's#[[:space:]]##g'
 	)
 	if [ -z $IFC ]; then
-	    cat > $$.iFC <<'EOF'
-<?xml version="1.0" ?>
-<ServiceProfile>
-  <InitialFilterCriteria>
-    <Priority>4</Priority>
-    <TriggerPoint>
-      <ConditionTypeCNF>1</ConditionTypeCNF>
-      <SPT>
-	<ConditionNegated>0</ConditionNegated>
-	<Group>0</Group>
-	<Method>INVITE</Method>
-	<Extension/>
-      </SPT>
-      <SPT>
-	<ConditionNegated>0</ConditionNegated>
-	<Group>0</Group>
-	<Method>SUBSCRIBE</Method>
-	<Extension/>
-      </SPT>
-      <SPT>
-	<ConditionNegated>0</ConditionNegated>
-	<Group>1</Group>
-	<SessionCase>1</SessionCase>
-	<Extension/>
-      </SPT>
-      <SPT>
-	<ConditionNegated>0</ConditionNegated>
-	<Group>1</Group>
-	<SessionCase>2</SessionCase>
-	<Extension/>
-      </SPT>
-    </TriggerPoint>
-    <ApplicationServer>
-      <ServerName>sip:mobile-twinned@gemini.${DOMAIN};twin-prefix=${PREFIX}</ServerName>
-      <DefaultHandling>0</DefaultHandling>
-    </ApplicationServer>
-  </InitialFilterCriteria>
-</ServiceProfile>
-EOF
-
-cat > $$.iFC <<'EOF'
+		cat > /tmp/$$.iFC <<'EOF'
 <?xml version="1.0" ?>
 <ServiceProfile>
 </ServiceProfile>
 EOF
 	else
-	    cat $IFC > $$.iFC
+	    cat $IFC > /tmp/$$.iFC
 	fi
 
-	sed -ie "s#\${DOMAIN}#${DOMAIN}#g" $$.iFC
-	sed -ie "s#\${PREFIX}#${PREFIX}#g" $$.iFC
+	sed -ie "s#\${DOMAIN}#${DOMAIN}#g" /tmp/$$.iFC
+	sed -ie "s#\${PREFIX}#${PREFIX}#g" /tmp/$$.iFC
 	
 	ifc_sta=$(
-	    cat $$.iFC|\
+	    cat /tmp/$$.iFC|\
         curl -s -X PUT -d @- http://${HSPROV}${service_profile}/filter_criteria
 	)
 	if [ ! -z $ifc_sta ]; then
@@ -454,7 +409,7 @@ EOF
 	    exit 1
 	fi
 
-	rm -f $$.iFC*
+	rm -f /tmp/$$.iFC*
 
 	if [ $quiet -eq 0 ];then
 	    ${mydir}/display_user ${rUSER} ${DOMAIN}
