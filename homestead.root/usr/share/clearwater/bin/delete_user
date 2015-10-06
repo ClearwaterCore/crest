@@ -1,0 +1,300 @@
+#!/bin/bash
+
+# @file delete_user
+#
+# Project Clearwater - IMS in the Cloud
+# Copyright (C) 2013  Metaswitch Networks Ltd
+#
+# This program is free software: you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation, either version 3 of the License, or (at your
+# option) any later version, along with the "Special Exception" for use of
+# the program along with SSL, set forth below. This program is distributed
+# in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+# without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details. You should have received a copy of the GNU General Public
+# License along with this program.  If not, see
+# <http://www.gnu.org/licenses/>.
+#
+# The author can be reached by email at clearwater@metaswitch.com or by
+# post at Metaswitch Networks Ltd, 100 Church St, Enfield EN2 6BQ, UK
+#
+# Special Exception
+# Metaswitch Networks Ltd  grants you permission to copy, modify,
+# propagate, and distribute a work formed by combining OpenSSL with The
+# Software, or a work derivative of such a combination, even if such
+# copying, modification, propagation, or distribution would otherwise
+# violate the terms of the GPL. You must comply with the GPL in all
+# respects for all of the code used other than OpenSSL.
+# "OpenSSL" means OpenSSL toolkit software distributed by the OpenSSL
+# Project and licensed under the OpenSSL Licenses, or a work based on such
+# software and licensed under the OpenSSL Licenses.
+# "OpenSSL Licenses" means the OpenSSL License and Original SSLeay License
+# under which the OpenSSL Project distributes the OpenSSL toolkit software,
+# as those licenses appear in the file LICENSE-OPENSSL.
+
+mydir=$(cd `dirname $0`;pwd)
+cwd=$(pwd)
+force=0
+quiet=0
+
+cmdname=$0
+
+usage()
+{
+    printf "\
+Usage: $cmdname [OPTION...] <directory-number>[..<directory-number>] <domain>\n\
+\n\
+Options:\n\
+  --hsprov IP:PORT  IP address and port of homestead-prov\n\
+  -f, --force       proceed with delete in the face of errors\n\
+  -q, --quiet       silence 'forced' error messages and such\n\
+  -h, --help        display this usage\n"
+
+    printf "\n"
+
+    exit 0
+}
+
+error()
+{
+    printf "$@"
+    printf "\n\n"
+
+    usage
+}
+
+params="$(getopt -o hfq -l help,force,quiet,hsprov: --name $cmdname -- "$@")"
+
+if [ $? -ne 0 ]
+then
+    usage
+fi
+
+eval set -- "$params"
+unset params
+
+while true
+do
+    case $1 in
+	--)
+	shift
+	break
+	;;
+	--hsprov)
+	export "HSPROV=${2-}"
+	shift 2
+	;;
+        -f|--force)
+        let "force=1"
+	shift
+        ;;
+        -q|--quiet)
+        let "quiet=1"
+	shift
+        ;;
+        -h|--help)
+        usage
+        ;;
+        *)
+        usage
+        ;;
+    esac
+done
+
+if [[ -z $HSPROV && -d /usr/share/clearwater/homestead/env ]]; then
+    local_settings=$(find /usr/share/clearwater/homestead/env -name local_settings.py)
+    if [ ! -z "$local_settings" ]; then
+	eval $(python -c "execfile(\"$local_settings\"); print \"LOCAL_IP=%s\nHTTP_PORT=%s\nLOCAL_PROVISIONING_ENABLED=%s\nHSS_ENABLED=%s\n\" % (LOCAL_IP, HTTP_PORT, LOCAL_PROVISIONING_ENABLED, HSS_ENABLED)")
+
+	LOCAL_IP=127.0.0.1
+
+	if [ -z $HTTP_PORT ]; then
+	    printf "Error: no HTTP_PORT in local_settings!\n"
+	    exit 1
+	fi
+
+	if [ "$HSS_ENABLED" != "False" ]; then
+	    printf "Error: HSS is not disabled!\n"
+	    exit 1
+	fi
+    else
+	printf "Error: can't find local_settings.py!\n"
+	exit 1
+    fi
+else
+    if [ -z $HSPROV ]; then
+	error "Error: homestead-prov address must be specified!"
+    fi
+    IP=( $(echo $HSPROV|sed -e 's#:# #') )
+    LOCAL_IP=${IP[0]}
+    HTTP_PORT=${IP[1]}
+    if [ -z $HTTP_PORT ]; then
+	HTTP_PORT=8889
+    fi
+    if [ -z $LOCAL_IP ]; then
+	error "Error: homestead-prov IP address must be specified!"
+    fi
+fi
+
+USER=$1
+if [ -z $USER ]; then
+    error "Error: a user (directory number) must be specified!"
+fi
+shift
+DOMAIN=$1
+if [ -z $DOMAIN ]; then
+    error "Error: a domain must be specified!"
+fi
+shift
+
+HSPROV=${LOCAL_IP}:${HTTP_PORT}
+_USERS=(${USER//,/ })
+USERS=()
+SIZES=()
+for _USER in ${_USERS[@]}; do
+    seq_USERS=(${_USER//./ })
+    if [ ${#seq_USERS[@]} -eq 1 ]; then
+        seq_USERS[1]=${seq_USERS[0]}
+    fi
+    echo "${seq_USERS[0]}" | egrep -qe "^[+0-9][0-9]*$"
+    if [ $? -ne 0 ]; then
+	printf "Error: invalid user range - ${seq_USERS[0]}..${seq_USERS[1]}!\n"
+	exit 1
+    fi
+    echo "${seq_USERS[1]}" | egrep -qe "^[+0-9][0-9]*$"
+    if [ $? -ne 0 ]; then
+	printf "Error: invalid user range - ${seq_USERS[0]}..${seq_USERS[1]}!\n"
+	exit 1
+    fi
+    if [ ${seq_USERS[0]} -gt ${seq_USERS[1]} ]; then
+	printf "Error: invalid user range - ${seq_USERS[0]}..${seq_USERS[1]}!\n"
+	exit 1
+    fi
+    if [ ${#seq_USERS[0]} -ne ${#seq_USERS[1]} ]; then
+	printf "Error: invalid user range - ${seq_USERS[0]}..${seq_USERS[1]}!\n"
+	exit 1
+    fi
+    SIZES[${#USERS[@]}]=${#seq_USERS[0]}
+
+    let "num=$(echo ${seq_USERS[0]}|sed -e 's#[+]##g'|sed -e 's#^0*##')+1"
+    if [ $num -lt 0 ]; then
+	printf "Error: invalid user - ${seq_USERS[0]}!\n"
+	exit 1
+    fi
+    let "num=$(echo ${seq_USERS[1]}|sed -e 's#[+]##g'|sed -e 's#^0*##')+1"
+    if [ $num -lt 0 ]; then
+	printf "Error: invalid user - ${seq_USERS[1]}!\n"
+	exit 1
+    fi
+
+    seq_USERS[0]=$(echo ${seq_USERS[0]} | sed -e 's#^0*##' | sed -e 's#^[+]0*#+#')
+    seq_USERS[1]=$(echo ${seq_USERS[1]} | sed -e 's#^0*##' | sed -e 's#^[+]0*#+#')
+
+    USERS[${#USERS[@]}]="{${seq_USERS[0]}..${seq_USERS[1]}}"
+done
+
+let "i=0"
+while [ $i -lt ${#USERS[@]} ]; do
+    user=${USERS[$i]}
+    plus=""
+    rplus=""
+    let "SIZE=${SIZES[$i]}"
+    if [ "${user:1:1}" == "+" ]; then
+	plus="%2B"
+	rplus="+"
+	let "SIZE=$SIZE - 1"
+    fi
+    for USER in $(eval echo ${USERS[$i]}); do
+	rUSER=$rplus$(printf "%0*d" "$SIZE" "$USER")
+	USER=$plus$(printf "%0*d" "$SIZE" "$USER")
+
+	public_id=sip:${USER}@${DOMAIN}
+	rpublic_id=sip:${rUSER}@${DOMAIN}
+	private_id=${USER}@${DOMAIN}
+	rprivate_id=${rUSER}@${DOMAIN}
+
+	if [ "$(curl -s http://${HSPROV}/ping 2>&1)" != "OK" ]; then
+	    printf "Error: can't contact homestead-prov @ http://${HSPROV}!\n"
+	    exit 1
+	fi
+
+	impu=$(curl -s http://${HSPROV}/impu/${public_id} 2>&1)
+	if [[ ${impu:0:1} != "<" ]]; then
+	    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+		printf "Error: IMPU user '%s' does not exist!\n" "${rpublic_id}"
+	    fi
+	    if [ $force -eq 0 ]; then
+		exit 1
+	    fi
+	fi
+	
+	if [[ ! "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
+	    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+		printf "Error: IMPI user '%s' does not exist!\n" "${rprivate_id}"
+	    fi
+	    if [ $force -eq 0 ]; then
+		exit 1
+	    fi
+	fi
+
+	sp_url=$(
+	    curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
+        grep "Location:"|\
+        awk '{print $2}'|\
+        sed -e 's#[[:space:]]##g'
+	)
+	#echo "sp_url=${sp_url}"
+	sp_uuid=$(echo ${sp_url}|sed -e 's#/irs/.*/service_profiles/##')
+	#echo "sp_uuid=${sp_uuid}"
+	irs_uuid=$(
+	    curl -s http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets|\
+        python -c 'import json,sys;obj=json.load(sys.stdin);print obj["associated_implicit_registration_sets"][0]' 2>&1
+	)
+	#echo "irs_uuid=${irs_uuid}"
+
+	#
+	# Delete the public ID
+	#
+	pubid_sta=$(
+	    curl -m2 -s -X DELETE http://${HSPROV}${sp_url}/public_ids/${public_id}
+	)
+	#echo "pubid_sta=${pubid_sta}"
+	if [ ! -z "$pubid_sta" ]; then
+	    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+		printf "Error: couldn't delete public ID '%s'!\n" "${rpublic_id}"
+	    fi
+	    if [ $force -eq 0 ]; then
+		exit 1
+	    fi
+	fi
+
+	#
+	# Delete IRS
+	#
+	#echo curl -m2 -s -X DELETE http://${HSPROV}/irs/${irs_uuid}
+	irs_sta=$(curl -m2 -s -X DELETE http://${HSPROV}/irs/${irs_uuid})
+	#echo "irs_sta=${irs_sta}"
+	if [ ! -z "$irs_sta" ]; then
+	    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+		printf "Error: couldn't delete IRS!\n"
+	    fi
+	    if [ $force -eq 0 ]; then
+		exit 1
+	    fi
+	fi
+	#echo curl -m2 -s -X DELETE http://${HSPROV}/private/${private_id}
+	privid_sta=$(curl -m2 -s -X DELETE http://${HSPROV}/private/${private_id})
+	#echo "privid_sta=${privid_sta}"
+	if [ ! -z "$privid_sta" ]; then
+	    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+		printf "Error: couldn't delete private ID '%s'!\n" "${rprivate_id}"
+	    fi
+	    if [ $force -eq 0 ]; then
+		exit 1
+	    fi
+	fi
+    done
+    let "i=$i + 1"
+done
