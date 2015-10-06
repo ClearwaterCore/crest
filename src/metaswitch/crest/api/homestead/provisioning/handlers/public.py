@@ -76,10 +76,20 @@ class AllPublicIDsHandler(BaseHandler):
 
         # Query all subscribers, chunk-by-chunk, and stream it back to the
         # client
-        first = True
+        first_result = True
+        first_chunk = True
+
         self.write('{"public_ids": [')
         while start < max_start:
-            if not first:
+            if not first_chunk:
+                # Write some data to prevent the request from being timed out by
+                # nginx. Use a space as whitespace is not significant in JSON.
+                self.write(' ')
+
+                # Sleep to avoid using too much CPU. Don't sleep on the first
+                # iteration as this makes the request take at least 1 second
+                # (which is bad for tools which query small subsections of the
+                # token space).
                 yield sleep(1)
 
             end = min([max_token, start + chunk_size])
@@ -88,8 +98,8 @@ class AllPublicIDsHandler(BaseHandler):
                 sp = None
                 irs = None
 
-                if first:
-                    first = False
+                if first_result:
+                    first_result = False
                 else:
                     self.write(',')
 
@@ -107,6 +117,8 @@ class AllPublicIDsHandler(BaseHandler):
 
             self.flush()
             start = end
+
+            first_chunk = False
 
         self.write(']}')
 
