@@ -47,6 +47,7 @@ Usage: $cmdname [OPTION...] <directory-number>[...<directory-number>] <domain> <
 \n\
 Options:\n\
   --hsprov IP:PORT  IP address and port of homestead-prov\n\
+  --hs IP:PORT      IP address and port of homestead\n\
   -q, --quiet       don't display the user\n\
   -h, --help        display this usage\n"
 
@@ -63,7 +64,7 @@ error()
     usage
 }
 
-params="$(getopt -o hq -l help,quiet,hsprov: --name $cmdname -- "$@")"
+params="$(getopt -o hq -l help,quiet,hsprov:,hs: --name $cmdname -- "$@")"
 
 if [ $? -ne 0 ]
 then
@@ -82,6 +83,10 @@ do
 	;;
 	--hsprov)
 	export "HSPROV=${2-}"
+	shift 2
+	;;
+	--hs)
+	export "HS=${2-}"
 	shift 2
 	;;
         -q|--quiet)
@@ -149,6 +154,15 @@ fi
 shift
 
 HSPROV=${LOCAL_IP}:${HTTP_PORT}
+if [ -z $HS ]; then
+    HS=${LOCAL_IP}
+fi
+HS_IP=( $(echo $HS|sed -e 's#:# #') )
+HS=${HS_IP[0]}:8888
+if [ ! -z "${HS_IP[1]}" ]; then
+    HS=${HS_IP[0]}:${HS_IP[1]}
+fi
+
 _USERS=(${USER//,/ })
 USERS=()
 SIZES=()
@@ -217,17 +231,26 @@ while [ $i -lt ${#USERS[@]} ]; do
 	    exit 1
 	fi
 
-	impu=$(curl -s http://${HSPROV}/impu/${public_id} 2>&1)
-	if [[ ${impu:0:1} == "<" ]]; then
-	    if [[ "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
-		public_id=${public_id}
+	(
+	    curl -w "\nhttp_code=%{http_code}\n" -s -X GET http://${HSPROV}/private/${private_id}; echo $? > /tmp/hsprov.sta
+	) > /tmp/hsprov.out 2>&1
+	sta=$(cat /tmp/hsprov.sta)
+	if [ $sta -eq 0 ]; then
+	    eval "$(grep "^http_code=" /tmp/hsprov.out)"
+	    if [ $http_code -ne 200 ]; then
+		if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+		    printf "Error: user ${public_id} does not exist!\n"
+		    exit 1
+		fi
+	    else
+		digest=$(grep -v "^http_code=" /tmp/hsprov.out | python -c 'import json,sys;obj=json.load(sys.stdin);print obj["digest_ha1"]')
 
 		service_profile=$(
 		    curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
-                grep "Location:"|\
-                awk '{print $2}'|\
-                tr '[[:space:]]' ' '|\
-                sed -e 's#[[:space:]]##g'
+                    grep "Location:"|\
+                    awk '{print $2}'|\
+                    tr '[[:space:]]' ' '|\
+                    sed -e 's#[[:space:]]##g'
 		)
 
 		new_digest=$(
@@ -236,7 +259,7 @@ while [ $i -lt ${#USERS[@]} ]; do
 		json_digest="{\"digest_ha1\": \"${new_digest}\", \"realm\": \"${DOMAIN}\"}"
 		put_sta=$(
 		    printf "%s\n" "${json_digest}"|\
-                curl -s curl -X PUT -d @- http://${HSPROV}/private/${private_id}
+                    curl -s curl -X PUT -d @- http://${HSPROV}/private/${private_id}
 		)
 		if [ ! -z $put_sta ]; then
 		    printf "Error: couldn't update password!\n"
@@ -246,12 +269,9 @@ while [ $i -lt ${#USERS[@]} ]; do
 		if [ $quiet -eq 0 ];then
 		    ${mydir}/display_user ${rUSER} ${DOMAIN}
 		fi
-            else
-		printf "Error: no IMPI user ${private_id}\n"
-		exit 1
 	    fi
 	else
-            printf "Error: no IMPU user '${public_id}'\n"
+            printf "Error: user '${public_id}' does not exist!\n"
 	    exit 1
 	fi
     done

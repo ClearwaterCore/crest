@@ -49,6 +49,7 @@ Usage: $cmdname [OPTION...] <directory-number>[..<directory-number>] <domain>\n\
 \n\
 Options:\n\
   --hsprov IP:PORT  IP address and port of homestead-prov\n\
+  --hs IP:PORT      IP address and port of homestead\n\
   -k, --keep-going  keep going on errors\n\
   -q, --quiet       suppress errors when ignoring them\n\
   -s, --short       less verbose display\n\
@@ -67,7 +68,7 @@ error()
     usage
 }
 
-params="$(getopt -o hskq -l help,short,keep-going,quiet,hsprov: --name $cmdname -- "$@")"
+params="$(getopt -o hskq -l help,short,keep-going,quiet,hsprov:,hs: --name $cmdname -- "$@")"
 
 if [ $? -ne 0 ]
 then
@@ -86,6 +87,10 @@ do
 	;;
 	--hsprov)
 	export "HSPROV=${2-}"
+	shift 2
+	;;
+	--hs)
+	export "HS=${2-}"
 	shift 2
 	;;
 	-s|--short)
@@ -156,7 +161,14 @@ fi
 shift
 
 HSPROV=${LOCAL_IP}:${HTTP_PORT}
-HS=${LOCAL_IP}:8888
+if [ -z $HS ]; then
+    HS=${LOCAL_IP}
+fi
+HS_IP=( $(echo $HS|sed -e 's#:# #') )
+HS=${HS_IP[0]}:8888
+if [ ! -z "${HS_IP[1]}" ]; then
+    HS=${HS_IP[0]}:${HS_IP[1]}
+fi
 _USERS=(${USER//,/ })
 USERS=()
 SIZES=()
@@ -227,9 +239,23 @@ while [ $i -lt ${#USERS[@]} ]; do
 	    exit 1
 	fi
 
-	impu=$(curl -m5 -s http://${HSPROV}/impu/${public_id} 2>&1)
-	if [[ ${impu:0:1} == "<" ]]; then
-	    if [[ "$(curl -m5 -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
+	(
+	    curl -w "\nhttp_code=%{http_code}\n" -s -X GET http://${HSPROV}/private/${private_id}; echo $? > /tmp/hsprov.sta
+	) > /tmp/hsprov.out 2>&1
+	sta=$(cat /tmp/hsprov.sta)
+	if [ $sta -eq 0 ]; then
+	    eval "$(grep "^http_code=" /tmp/hsprov.out)"
+	    if [ $http_code -ne 200 ]; then
+		if [[ $keep_going == 0 || ( $keep_going != 0 && $quiet == 0 ) ]]; then
+		    printf "Error: user ${public_id} does not exist!\n"
+		fi
+		if [ $keep_going -eq 0 ]; then
+		    exit 1
+		fi
+	    else
+		digest=$(grep -v "^http_code=" /tmp/hsprov.out | python -c 'import json,sys;obj=json.load(sys.stdin);print obj["digest_ha1"]')
+		impu=$(curl -m5 -s http://${HSPROV}/impu/${public_id} 2>&1)
+
 		public_id=${public_id}
 
 		service_profile=$(curl -m5 -s -D - http://${HSPROV}/public/${public_id}/service_profile)
@@ -240,47 +266,32 @@ while [ $i -lt ${#USERS[@]} ]; do
 		    if [ $keep_going -eq 0 ]; then
 			exit 1
 		    fi
-		fi
-		service_profile=$(printf "%s" "${service_profile}"|grep "Location:"|awk '{print $2}'|tr '[[:space:]]' ' '|sed -e 's#[[:space:]]##g')
-		iFC=$(curl -m5 -s http://${HSPROV}${service_profile}/filter_criteria)
-
-		digest=$(curl -m5 -s http://${HSPROV}/impi/${private_id}/digest|python -c 'import json,sys;obj=json.load(sys.stdin);print obj["digest_ha1"]' 2>&1)
-
-		registered=$(curl -s "http://${HS}/impu/${public_id}/reg-data?private_id=${private_id}"|grep RegistrationState|sed -e 's#.*<RegistrationState[>]\([^<]*\).*#\1#')
-
-		if [ $short -eq 0 ]; then
-		    echo ${rprivate_id}:
-		    echo "  Registration state:"
-		    echo "    $registered"
-		    echo "  HA1 digest:"
-		    echo "    $digest"
-		    echo "  iFC:"
-		    (
-			if [ -z "$iFC" ]; then
-			    printf "Error: no iFC for user ${private_id}\n"
-			else
-			    echo ${iFC}|python -c 'import xml.dom.minidom, sys; print xml.dom.minidom.parse(sys.stdin).toprettyxml()'|sed -e '/^[[:space:]]*$/d'
-			fi
-		    ) 2>&1 | while IFS='' read -r line; do
-			printf "     %s\n" "$line"
-		    done
 		else
-		    printf "%s:%s\n" "${rprivate_id}" "${digest}"
+		    service_profile=$(printf "%s" "${service_profile}"|grep "Location:"|awk '{print $2}'|tr '[[:space:]]' ' '|sed -e 's#[[:space:]]##g')
+		    iFC=$(curl -m5 -s http://${HSPROV}${service_profile}/filter_criteria)
+
+		    registered=$(curl -s "http://${HS}/impu/${public_id}/reg-data?private_id=${private_id}"|grep RegistrationState|sed -e 's#.*<RegistrationState[>]\([^<]*\).*#\1#')
+
+		    if [ $short -eq 0 ]; then
+			echo ${rprivate_id}:
+			echo "  Registration state:"
+			echo "    $registered"
+			echo "  HA1 digest:"
+			echo "    $digest"
+			echo "  iFC:"
+			(
+			    if [ -z "$iFC" ]; then
+				printf "Error: no iFC for user ${private_id}\n"
+			    else
+				echo ${iFC}|python -c 'import xml.dom.minidom, sys; print xml.dom.minidom.parse(sys.stdin).toprettyxml()'|sed -e '/^[[:space:]]*$/d'
+			    fi
+			) 2>&1 | while IFS='' read -r line; do
+			    printf "     %s\n" "$line"
+			done
+		    else
+			printf "%s:%s\n" "${rprivate_id}" "${digest}"
+		    fi
 		fi
-	    else
-		if [[ $keep_going == 0 || ( $keep_going != 0 && $quiet == 0 ) ]]; then
-		    printf "Error: no IMPI user ${private_id}\n"
-		fi
-		if [ $keep_going -eq 0 ]; then
-		    exit 1
-		fi
-	    fi
-	else
-	    if [[ $keep_going == 0 || ( $keep_going != 0 && $quiet == 0 ) ]]; then
-		printf "Error: no IMPU user '%s'\n" "${rpublic_id}"
-	    fi
-	    if [ $keep_going -eq 0 ]; then
-		exit 1
 	    fi
 	fi
     done

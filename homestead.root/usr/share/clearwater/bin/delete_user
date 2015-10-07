@@ -48,6 +48,7 @@ Usage: $cmdname [OPTION...] <directory-number>[..<directory-number>] <domain>\n\
 \n\
 Options:\n\
   --hsprov IP:PORT  IP address and port of homestead-prov\n\
+  --hs IP:PORT      IP address and port of homestead\n\
   -f, --force       proceed with delete in the face of errors\n\
   -q, --quiet       silence 'forced' error messages and such\n\
   -h, --help        display this usage\n"
@@ -65,7 +66,7 @@ error()
     usage
 }
 
-params="$(getopt -o hfq -l help,force,quiet,hsprov: --name $cmdname -- "$@")"
+params="$(getopt -o hfq -l help,force,quiet,hsprov:,hs: --name $cmdname -- "$@")"
 
 if [ $? -ne 0 ]
 then
@@ -84,6 +85,10 @@ do
 	;;
 	--hsprov)
 	export "HSPROV=${2-}"
+	shift 2
+	;;
+	--hs)
+	export "HS=${2-}"
 	shift 2
 	;;
         -f|--force)
@@ -150,6 +155,15 @@ fi
 shift
 
 HSPROV=${LOCAL_IP}:${HTTP_PORT}
+if [ -z $HS ]; then
+    HS=${LOCAL_IP}
+fi
+HS_IP=( $(echo $HS|sed -e 's#:# #') )
+HS=${HS_IP[0]}:8888
+if [ ! -z "${HS_IP[1]}" ]; then
+    HS=${HS_IP[0]}:${HS_IP[1]}
+fi
+
 _USERS=(${USER//,/ })
 USERS=()
 SIZES=()
@@ -220,79 +234,77 @@ while [ $i -lt ${#USERS[@]} ]; do
 	    exit 1
 	fi
 
-	impu=$(curl -s http://${HSPROV}/impu/${public_id} 2>&1)
-	if [[ ${impu:0:1} != "<" ]]; then
-	    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
-		printf "Error: IMPU user '%s' does not exist!\n" "${rpublic_id}"
-	    fi
-	    if [ $force -eq 0 ]; then
-		exit 1
-	    fi
-	fi
-	
-	if [[ ! "$(curl -s http://${HSPROV}/impi/${private_id}/digest)" =~ digest_ha1 ]]; then
-	    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
-		printf "Error: IMPI user '%s' does not exist!\n" "${rprivate_id}"
-	    fi
-	    if [ $force -eq 0 ]; then
-		exit 1
-	    fi
-	fi
-
-	sp_url=$(
-	    curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
+	(
+	    curl -w "\nhttp_code=%{http_code}\n" -s -X GET http://${HSPROV}/private/${private_id}; echo $? > /tmp/hsprov.sta
+	) > /tmp/hsprov.out 2>&1
+	sta=$(cat /tmp/hsprov.sta)
+	if [ $sta -eq 0 ]; then
+	    eval "$(grep "^http_code=" /tmp/hsprov.out)"
+	    if [ $http_code -ne 200 ]; then
+		if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+		    printf "Error: user ${public_id} does not exist!\n"
+		fi
+		if [ $force -eq 0 ]; then
+		    exit 1
+		fi
+	    else
+		digest=$(grep -v "^http_code=" /tmp/hsprov.out | python -c 'import json,sys;obj=json.load(sys.stdin);print obj["digest_ha1"]')
+		sp_url=$(
+		    curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
         grep "Location:"|\
         awk '{print $2}'|\
         sed -e 's#[[:space:]]##g'
-	)
+		)
 	#echo "sp_url=${sp_url}"
-	sp_uuid=$(echo ${sp_url}|sed -e 's#/irs/.*/service_profiles/##')
+		sp_uuid=$(echo ${sp_url}|sed -e 's#/irs/.*/service_profiles/##')
 	#echo "sp_uuid=${sp_uuid}"
-	irs_uuid=$(
-	    curl -s http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets|\
+		irs_uuid=$(
+		    curl -s http://${HSPROV}/private/${private_id}/associated_implicit_registration_sets|\
         python -c 'import json,sys;obj=json.load(sys.stdin);print obj["associated_implicit_registration_sets"][0]' 2>&1
-	)
+		)
 	#echo "irs_uuid=${irs_uuid}"
 
 	#
 	# Delete the public ID
 	#
-	pubid_sta=$(
-	    curl -m2 -s -X DELETE http://${HSPROV}${sp_url}/public_ids/${public_id}
-	)
-	#echo "pubid_sta=${pubid_sta}"
-	if [ ! -z "$pubid_sta" ]; then
-	    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
-		printf "Error: couldn't delete public ID '%s'!\n" "${rpublic_id}"
-	    fi
-	    if [ $force -eq 0 ]; then
-		exit 1
-	    fi
-	fi
+		pubid_sta=$(
+		    curl -m2 -s -X DELETE http://${HSPROV}${sp_url}/public_ids/${public_id}
+		)
+ 	    #echo "pubid_sta=${pubid_sta}"
+		if [ ! -z "$pubid_sta" ]; then
+		    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+			printf "Error: couldn't delete public ID '%s'!\n" "${rpublic_id}"
+		    fi
+		    if [ $force -eq 0 ]; then
+			exit 1
+		    fi
+		fi
 
 	#
 	# Delete IRS
 	#
-	#echo curl -m2 -s -X DELETE http://${HSPROV}/irs/${irs_uuid}
-	irs_sta=$(curl -m2 -s -X DELETE http://${HSPROV}/irs/${irs_uuid})
-	#echo "irs_sta=${irs_sta}"
-	if [ ! -z "$irs_sta" ]; then
-	    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
-		printf "Error: couldn't delete IRS!\n"
-	    fi
-	    if [ $force -eq 0 ]; then
-		exit 1
-	    fi
-	fi
-	#echo curl -m2 -s -X DELETE http://${HSPROV}/private/${private_id}
-	privid_sta=$(curl -m2 -s -X DELETE http://${HSPROV}/private/${private_id})
-	#echo "privid_sta=${privid_sta}"
-	if [ ! -z "$privid_sta" ]; then
-	    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
-		printf "Error: couldn't delete private ID '%s'!\n" "${rprivate_id}"
-	    fi
-	    if [ $force -eq 0 ]; then
-		exit 1
+	    #echo curl -m2 -s -X DELETE http://${HSPROV}/irs/${irs_uuid}
+		irs_sta=$(curl -m2 -s -X DELETE http://${HSPROV}/irs/${irs_uuid})
+	    #echo "irs_sta=${irs_sta}"
+		if [ ! -z "$irs_sta" ]; then
+		    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+			printf "Error: couldn't delete IRS!\n"
+		    fi
+		    if [ $force -eq 0 ]; then
+			exit 1
+		    fi
+		fi
+	    #echo curl -m2 -s -X DELETE http://${HSPROV}/private/${private_id}
+		privid_sta=$(curl -m2 -s -X DELETE http://${HSPROV}/private/${private_id})
+	    #echo "privid_sta=${privid_sta}"
+		if [ ! -z "$privid_sta" ]; then
+		    if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
+			printf "Error: couldn't delete private ID '%s'!\n" "${rprivate_id}"
+		    fi
+		    if [ $force -eq 0 ]; then
+			exit 1
+		    fi
+		fi
 	    fi
 	fi
     done
