@@ -267,10 +267,10 @@ while [ $i -lt ${#USERS[@]} ]; do
 
 	(
 	    curl -w "\nhttp_code=%{http_code}\n" -s -X GET http://${HSPROV}/private/${private_id}; echo $? > /tmp/hsprov.sta
-	) > /tmp/hsprov.out 2>&1
-	sta=$(cat /tmp/hsprov.sta)
+	) > /tmp/hsprov.$$ 2>&1
+	sta=$(cat /tmp/hsprov.sta;rm -f /tmp/hsprov.sta)
 	if [ $sta -eq 0 ]; then
-	    eval "$(grep "^http_code=" /tmp/hsprov.out)"
+	    eval "$(grep "^http_code=" /tmp/hsprov.$$)"
 	    if [ $http_code -eq 200 ]; then
 		printf "Error: user '%s' already exists!\n" "${rpublic_id}"
 		exit 1

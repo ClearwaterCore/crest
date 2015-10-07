@@ -236,10 +236,10 @@ while [ $i -lt ${#USERS[@]} ]; do
 
 	(
 	    curl -w "\nhttp_code=%{http_code}\n" -s -X GET http://${HSPROV}/private/${private_id}; echo $? > /tmp/hsprov.sta
-	) > /tmp/hsprov.out 2>&1
-	sta=$(cat /tmp/hsprov.sta)
+	) > /tmp/hsprov.$$ 2>&1
+	sta=$(cat /tmp/hsprov.sta;rm -f /tmp/hsprov.sta)
 	if [ $sta -eq 0 ]; then
-	    eval "$(grep "^http_code=" /tmp/hsprov.out)"
+	    eval "$(grep "^http_code=" /tmp/hsprov.$$)"
 	    if [ $http_code -ne 200 ]; then
 		if [[ $force == 0 || ( $force != 0 && $quiet == 0 ) ]]; then
 		    printf "Error: user ${public_id} does not exist!\n"
@@ -248,10 +248,9 @@ while [ $i -lt ${#USERS[@]} ]; do
 		    exit 1
 		fi
 	    else
-		digest=$(grep -v "^http_code=" /tmp/hsprov.out | python -c 'import json,sys;obj=json.load(sys.stdin);print obj["digest_ha1"]')
 		sp_url=$(
 		    curl -s -D - http://${HSPROV}/public/${public_id}/service_profile|\
-        grep "Location:"|\
+                    grep "Location:"|\
         awk '{print $2}'|\
         sed -e 's#[[:space:]]##g'
 		)
