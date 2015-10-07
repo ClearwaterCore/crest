@@ -74,6 +74,13 @@ get_settings()
 {
   . /etc/clearwater/config
 
+  # Log the output of clearwater-show-config to syslog
+  (
+      clearwater-show-config > /tmp/$$ 2>&1
+      logger -t "clearwater-show-config" -f /tmp/$$ -p local6.info
+      rm -f /tmp/$$
+  )
+
   if [ ! -z "$signaling_namespace" ]
   then
     namespace_prefix="ip netns exec $signaling_namespace"
