@@ -106,10 +106,10 @@ done
 if [[ -z $HSPROV && -d /usr/share/clearwater/homestead/env ]]; then
     local_settings=$(find /usr/share/clearwater/homestead/env -name local_settings.py)
     if [ ! -z "$local_settings" ]; then
-	eval $(python -c "execfile(\"$local_settings\"); print \"LOCAL_IP=%s\nHTTP_PORT=%s\nHSS_ENABLED=%s\n\" % (LOCAL_IP, HTTP_PORT, HSS_ENABLED)")
+	eval $(python -c "execfile(\"$local_settings\"); print \"MANAGEMENT_LOCAL_IP=%s\nHTTP_PORT=%s\nHSS_ENABLED=%s\n\" % (MANAGEMENT_LOCAL_IP, HTTP_PORT, HSS_ENABLED)")
 
-	if [ -z $LOCAL_IP ]; then
-	    printf "Error: no LOCAL_IP in local_settings!\n"
+	if [ -z $MANAGEMENT_LOCAL_IP ]; then
+	    printf "Error: no MANAGEMENT_LOCAL_IP in local_settings!\n"
 	    exit 1
 	fi
 
@@ -131,12 +131,12 @@ else
 	error "Error: homestead-prov address must be specified!"
     fi
     IP=( $(echo $HSPROV|sed -e 's#:# #') )
-    LOCAL_IP=${IP[0]}
+    MANAGEMENT_LOCAL_IP=${IP[0]}
     HTTP_PORT=${IP[1]}
     if [ -z $HTTP_PORT ]; then
 	HTTP_PORT=8889
     fi
-    if [ -z $LOCAL_IP ]; then
+    if [ -z $MANAGEMENT_LOCAL_IP ]; then
 	error "Error: homestead-prov IP address must be specified!"
     fi
 fi
@@ -152,7 +152,7 @@ if [ -z $DOMAIN ]; then
 fi
 shift
 
-HSPROV=${LOCAL_IP}:${HTTP_PORT}
+HSPROV=${MANAGEMENT_LOCAL_IP}:${HTTP_PORT}
 _USERS=(${USER//,/ })
 USERS=()
 SIZES=()
