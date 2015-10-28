@@ -109,58 +109,41 @@ do
     esac
 done
 
-# Get local (signaling) IP and signaling namespace (if any) from config as we
-# can't derive these from HSPROV on a split network system (and config will
-# always be present on a # Clearwater Core node running these scripts)
-#
-# Note that SIG_NAMESPACE may not be defined
-local_settings=$(find /usr/share/clearwater/homestead/env -name local_settings.py)
-if [ ! -z "$local_settings" ]; then
-    eval $(python -c "execfile(\"$local_settings\"); print \"LOCAL_IP=%s\nSIG_NAMESPACE=%s\n\" % (LOCAL_IP, SIG_NAMESPACE)")
-
-    if [ -z $LOCAL_IP ]; then
-        printf "Error: no LOCAL_IP in local_settings!\n"
-        exit 1
-    fi
-
-    if [ ! -z $SIG_NAMESPACE ]; then
-        # Set up the signaling namespace prefix
-        SIG_PREFIX="sudo ip netns exec $SIG_NAMESPACE"
-    fi
-else
-    printf "Error: can't find local_settings.py!\n"
-    exit 1
-fi
-
 if [[ -z $HSPROV && -d /usr/share/clearwater/homestead/env ]]; then
-    eval $(python -c "execfile(\"$local_settings\"); print \"MANAGEMENT_LOCAL_IP=%s\nHTTP_PORT=%s\nHSS_ENABLED=%s\n\" % (MANAGEMENT_LOCAL_IP, HTTP_PORT, HSS_ENABLED)")
+    local_settings=$(find /usr/share/clearwater/homestead/env -name local_settings.py)
+    if [ ! -z "$local_settings" ]; then
+        eval $(python -c "execfile(\"$local_settings\"); print \"MANAGEMENT_LOCAL_IP=%s\nHTTP_PORT=%s\nHSS_ENABLED=%s\n\" % (MANAGEMENT_LOCAL_IP, HTTP_PORT, HSS_ENABLED)")
 
-    if [ -z $MANAGEMENT_LOCAL_IP ]; then
-        printf "Error: no MANAGEMENT_LOCAL_IP in local_settings!\n"
-        exit 1
-    fi
+        if [ -z $MANAGEMENT_LOCAL_IP ]; then
+            printf "Error: no MANAGEMENT_LOCAL_IP in local_settings!\n"
+            exit 1
+        fi
 
-    if [ -z $HTTP_PORT ]; then
-        printf "Error: no HTTP_PORT in local_settings!\n"
-        exit 1
-    fi
+        if [ -z $HTTP_PORT ]; then
+            printf "Error: no HTTP_PORT in local_settings!\n"
+            exit 1
+        fi
 
-    if [ "$HSS_ENABLED" != "False" ]; then
-        printf "Error: HSS is not disabled!\n"
+        if [ "$HSS_ENABLED" != "False" ]; then
+            printf "Error: HSS is not disabled!\n"
+            exit 1
+        fi
+    else
+        printf "Error: can't find local_settings.py!\n"
         exit 1
     fi
 else
     if [ -z $HSPROV ]; then
-	error "Error: homestead-prov address must be specified!"
+        error "Error: homestead-prov address must be specified!"
     fi
     IP=( $(echo $HSPROV|sed -e 's#:# #') )
     MANAGEMENT_LOCAL_IP=${IP[0]}
     HTTP_PORT=${IP[1]}
     if [ -z $HTTP_PORT ]; then
-	HTTP_PORT=8889
+        HTTP_PORT=8889
     fi
     if [ -z $MANAGEMENT_LOCAL_IP ]; then
-	error "Error: homestead-prov IP address must be specified!"
+        error "Error: homestead-prov IP address must be specified!"
     fi
 fi
 
@@ -176,7 +159,6 @@ fi
 shift
 
 HSPROV=${MANAGEMENT_LOCAL_IP}:${HTTP_PORT}
-HS=${LOCAL_IP}:8888
 _USERS=(${USER//,/ })
 USERS=()
 SIZES=()
@@ -266,12 +248,8 @@ while [ $i -lt ${#USERS[@]} ]; do
 
 		digest=$(curl -m5 -s http://${HSPROV}/impi/${private_id}/digest|python -c 'import json,sys;obj=json.load(sys.stdin);print obj["digest_ha1"]' 2>&1)
 
-		registered=$(${SIG_PREFIX} curl -s "http://${HS}/impu/${public_id}/reg-data?private_id=${private_id}"|grep RegistrationState|sed -e 's#.*<RegistrationState[>]\([^<]*\).*#\1#')
-
 		if [ $short -eq 0 ]; then
 		    echo ${rprivate_id}:
-		    echo "  Registration state:"
-		    echo "    $registered"
 		    echo "  HA1 digest:"
 		    echo "    $digest"
 		    echo "  iFC:"
