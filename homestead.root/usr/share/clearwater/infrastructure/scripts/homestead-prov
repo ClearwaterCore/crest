@@ -28,6 +28,7 @@ esac
 hs_hostname=$(echo $hs_hostname | sed -e 's/^\([^:]*\):[0-9][0-9]*$/\1/g')
 function escape { echo $1 | sed -e 's/\//\\\//g' ; }
 sed -e 's/^LOCAL_IP = .*$/LOCAL_IP = "'$(escape $local_ip)'"/g
+        s/^MANAGEMENT_LOCAL_IP = .*$/MANAGEMENT_LOCAL_IP = "'$(escape ${management_local_ip:-$local_ip})'"/g
         s/^SIP_DIGEST_REALM = .*$/SIP_DIGEST_REALM = "'$(escape $home_domain)'"/g
         s/^SPROUT_HOSTNAME = .*$/SPROUT_HOSTNAME = "'$(escape $sprout_hostname)'"/g
         s/^PUBLIC_HOSTNAME = .*$/PUBLIC_HOSTNAME = "'$(escape $public_hostname)'"/g
