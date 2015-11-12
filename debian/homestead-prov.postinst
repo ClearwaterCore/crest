@@ -75,6 +75,9 @@ case "$1" in
         # Don't fail if it's already stopped.
         service homestead-prov stop || true
 
+        # Restart homestead, so that it'll use homestead-prov instead of HSS
+        service homestead restart || true
+
         # Apply secure connection rules if enabled.
         [ ! -x /etc/init.d/clearwater-secure-connections ] || /etc/init.d/clearwater-secure-connections reload
     ;;
