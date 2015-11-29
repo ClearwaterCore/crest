@@ -1,5 +1,15 @@
 #! /bin/bash
 
+MIGRATION_NUM=1
+MIGRATION_FILE=/var/lib/homestead/cassandra-migration-prov
+
+if [[ -e $MIGRATION_FILE ]]
+then
+  CURRENT_MIGRATION_VALUE=$(cat $MIGRATION_FILE)
+else
+  CURRENT_MIGRATION_VALUE=0
+fi
+
 if [[ ! -e /var/lib/cassandra/data/homestead_provisioning ]];
 then
   count=0
@@ -12,6 +22,7 @@ then
       exit 1
     fi
 
+    echo "Cassandra not up yet, polling again"
     sleep 1
     /usr/share/clearwater/bin/poll_cassandra.sh --no-grace-period
   done
@@ -22,10 +33,17 @@ CREATE TABLE implicit_registration_sets (id uuid PRIMARY KEY, dummy text) WITH C
 CREATE TABLE service_profiles (id uuid PRIMARY KEY, irs text, initialfiltercriteria text) WITH COMPACT STORAGE AND read_repair_chance = 1.0;
 CREATE TABLE public (public_id text PRIMARY KEY, publicidentity text, service_profile text) WITH COMPACT STORAGE AND read_repair_chance = 1.0;
 CREATE TABLE private (private_id text PRIMARY KEY, digest_ha1 text, realm text) WITH COMPACT STORAGE AND read_repair_chance = 1.0;" | /usr/share/clearwater/bin/run-in-signaling-namespace cqlsh
+  
+  CURRENT_MIGRATION_VALUE=0
 fi
 
-echo "USE homestead_provisioning; DESC TABLE private" | /usr/share/clearwater/bin/run-in-signaling-namespace cqlsh | grep plaintext_password > /dev/null
-if [ $? != 0 ]; then
-  echo "USE homestead_provisioning;
-  ALTER TABLE private ADD plaintext_password text;" | /usr/share/clearwater/bin/run-in-signaling-namespace cqlsh
+if [[ $CURRENT_MIGRATION_VALUE != $MIGRATION_NUM ]]
+then
+  echo "USE homestead_provisioning; DESC TABLE private" | /usr/share/clearwater/bin/run-in-signaling-namespace cqlsh | grep plaintext_password > /dev/null
+  if [ $? != 0 ]; then
+    echo "USE homestead_provisioning;
+    ALTER TABLE private ADD plaintext_password text;" | /usr/share/clearwater/bin/run-in-signaling-namespace cqlsh
+  fi
 fi
+
+echo $MIGRATION_NUM > $MIGRATION_FILE
