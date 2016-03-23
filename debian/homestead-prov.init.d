@@ -77,7 +77,7 @@ get_settings()
   # Log the output of clearwater-show-config to syslog
   (
       clearwater-show-config > /tmp/$$ 2>&1
-      logger -t "clearwater-show-config" -f /tmp/$$ -p local6.info
+      logger -t "clearwater-show-config" -f /tmp/$$ -p local7.info
       rm -f /tmp/$$
   )
 
