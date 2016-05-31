@@ -38,6 +38,8 @@
 import os
 import argparse
 import logging
+import prctl
+import signal
 from sys import executable, exit
 from socket import AF_INET
 from fcntl import flock, LOCK_EX, LOCK_NB
@@ -108,13 +110,16 @@ def standalone():
     twisted.internet.address.UNIXAddress.host = "localhost"
 
     # Parse arguments
-    parser = argparse.ArgumentParser(description="Homer web server")
+    parser = argparse.ArgumentParser(description="Crest web server")
     parser.add_argument("--background", action="store_true", help="Detach and run server in background")
     parser.add_argument("--signaling-namespace", action="store_true", help="Server running in signaling namespace")
     parser.add_argument("--worker-processes", default=1, type=int)
     parser.add_argument("--shared-http-tcp-fd", default=None, type=int)
     parser.add_argument("--process-id", default=0, type=int)
     args = parser.parse_args()
+
+    # Set process name.
+    prctl.prctl(prctl.NAME, settings.PROCESS_NAME)
 
     # We don't initialize logging until we fork because we want each child to
     # have its own logging and it's awkward to reconfigure logging that is
@@ -131,11 +136,6 @@ def standalone():
         # Fork into background.
         utils.daemonize(err_log_name)
 
-    # Drop a pidfile.
-    pid = os.getpid()
-    with open(settings.PID_FILE, "w") as pidfile:
-        pidfile.write(str(pid) + "\n")
-
     utils.install_sigusr1_handler(settings.LOG_FILE_PREFIX)
 
     # Setup logging
@@ -150,7 +150,19 @@ def standalone():
 
     # Initialize reactor ports and create worker sub-processes
     if args.process_id == 0:
-        # Main process startup, create UNIX domain socket for nginx front-end (used for
+        # Main process startup, create pidfile.
+
+        # We must keep a reference to the file object here, as this keeps
+        # the file locked and provides extra protection against two processes running at
+        # once.
+        pidfile_lock = None
+        try:
+            pidfile_lock = utils.lock_and_write_pid_file(settings.PID_FILE) # noqa
+        except IOError:
+            # We failed to take the lock - another process is already running
+            exit(1)
+
+        # Create UNIX domain socket for nginx front-end (used for
         # normal operation and as a bridge from the default namespace to the signaling
         # namespace in a multiple interface configuration).
         bind_safely(reactor, args.process_id, application)
@@ -177,8 +189,10 @@ def standalone():
                                      childFDs={0: 0, 1: 1, 2: 2},
                                      env = os.environ)
     else:
-        # Sub-process startup, create UNIX domain socket for nginx front-end based on
-        # process ID.
+        # Sub-process startup, ensure we die if our parent does.
+        prctl.prctl(prctl.PDEATHSIG, signal.SIGTERM)
+
+        # Create UNIX domain socket for nginx front-end based on process ID.
         bind_safely(reactor, args.process_id, application)
 
         # Create TCP socket if file descriptor was passed.
@@ -186,7 +200,7 @@ def standalone():
             reactor.adoptStreamPort(args.shared_http_tcp_fd, AF_INET, application)
 
     # We need to catch the shutdown request so that we can properly stop
-    # the ZMQ interface; otherwise the reactor won't shut down on a SIGTERM 
+    # the ZMQ interface; otherwise the reactor won't shut down on a SIGTERM
     # and will be SIGKILLed when the service is stopped.
     reactor.addSystemEventTrigger('before', 'shutdown', on_before_shutdown)
 

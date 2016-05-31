@@ -10,46 +10,6 @@ All access must go via this API, rather than directly to the database.
 
 Make a GET request to this endpoint to check whether Homestead-prov is running. It will return 200 OK if so.
 
-## IMPI
-
-    /impi/<private ID>/digest
-
-Make a GET request to this URL to retrieve the digest of the specified private ID
-
-The URL takes an optional query parameter: `public_id=<public_id>` If specified a digest is only returned if the private ID is able to authenticate the public ID.
-
-Response:
-
-* 200 if the digest is found, returned as JSON: `{ "digest_ha1": "<DIGEST>" }`
-* 404 if the digest is not found.
-
-## IMPU
-
-    /impu/<public ID>
-
-Make a GET request to this URL to retrieve the IMS subscription document for this public ID
-
-Response:
-
-* 200 if the public ID is found, returned as an IMSSubscription XML document, e.g.:
-
-    <IMSSubscription>
-        <PrivateID>...</PrivateID>
-        <ServiceProfile>
-            <InitialFilterCriteria>
-                <TriggerPoint>...</SPT></TriggerPoint>
-                <ApplicationServer>
-                    <ServerName>...</ServerName>
-                </ApplicationServer>
-            </InitialFilterCriteria>
-            <PublicIdentity>
-                <Identity>...</Identity>
-            </PublicIdentity>
-        </ServiceProfile>
-    </IMSSubscription>
-
-* 404 if the public ID is not found.
-
 ## Private ID
 
     /private/<private ID>
@@ -221,3 +181,53 @@ Make a GET to this URL to list the private IDs that can authenticate the public 
 
 * 200 if the public IDs exists, returned as JSON: `{ "private_ids": ["<private-id-1>", "<private-id-2>"] }`
 * 404 if the public ID does not exist.
+
+`/public/?excludeuuids=[true|false]&chunk-proportion=N&chunk=M`
+
+Make a GET to this URL to list all public IDs provisioned on the system.
+
+Parameters:
+
+* excludeuuids (boolean, default false) - This API can provide the service profile and implicit
+    registration set UUIDs for each public ID. This requires more database lookups, so can be
+    disabled for a faster, less CPU-intensive query if they aren't needed.
+* chunk-proportion (integer, default 256) - Internally, Homestead breaks the subscriber base into
+    this many chunks, and pauses for 1 second between querying each one. Reducing this value will
+    result in a faster response, but will be less well-paced (with a higher risk of disrupting
+    service), and as Homestead handles more data at once, results in higher memory usage. The value
+    of 256 has proved to work well in testing.
+* chunk (integer, default unset) - If set, this API only returns this chunk (i.e. a fraction of
+    the total subscriber base).  Chunks are 0-indexed, and so run from `0` to
+    `chunk-proportion - 1` - e.g. if you have 10000 subscribers and set `chunk-proportion=1000`, a
+    query with `chunk=0` will return ~10 subscribers and a query with `chunk=1` will return another
+    ~10 subscribers.  If absent, this API returns all chunks.
+
+This API does a lot more work than the others, so it tends to be slower - as a rough guide, from
+testing on a 1-core VM:
+
+* retrieving 100k subscribers with excludeuuids=false takes 520 seconds - 264 seconds plus 256 1-second pauses for pacing
+* retrieving 100k subscribers with excludeuuids=true takes 264 seconds - 8 seconds plus 256 1-second pauses for pacing
+
+The response is always 200 OK, with a JSON body in the following form:
+
+```
+{"public_ids":
+  [
+    {"public_id": "sip:a@example.com",
+     "sp": "fbfb0fa8-ac91-46a9-907a-1408fa0b521f",
+     "irs": "51ca6207-9261-4199-aef0-8da6fb1fdafd"},
+    {"public_id": "sip:b@example.com",
+     "sp": "fbfb0fa8-ac91-46a9-907a-1408fa0b521f",
+     "irs": "51ca6207-9261-4199-aef0-8da6fb1fdafd"},
+]}
+```
+
+or, if excludeuuids is true:
+
+```
+{"public_ids":
+  [
+    {"public_id": "sip:a@example.com"},
+    {"public_id": "sip:b@example.com"},
+]}
+```
