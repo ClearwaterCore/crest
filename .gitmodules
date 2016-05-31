@@ -1,9 +1,9 @@
 [submodule "build-infra"]
 	path = build-infra
-	url = git@github.com:Metaswitch/clearwater-build-infra.git
+	url = git@github.com:ClearwaterCore/clearwater-build-infra.git
 [submodule "modules/common"]
 	path = common
-	url = git@github.com:Metaswitch/python-common.git
+	url = git@github.com:ClearwaterCore/python-common.git
 [submodule "modules/telephus"]
 	path = telephus
-	url = git@github.com:Metaswitch/Telephus.git
+	url = git@github.com:ClearwaterCore/Telephus.git
