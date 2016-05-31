@@ -1,7 +1,4 @@
-eggs usr/share/clearwater/homestead/
-setup.py usr/share/clearwater/homestead/
-src usr/share/clearwater/homestead/
-modules usr/share/clearwater/homestead/
-homestead.local_settings/local_settings.py usr/share/clearwater/homestead/src/metaswitch/crest/
-homestead-prov.monit usr/share/clearwater/homestead/
+.homestead_prov-eggs/* usr/share/clearwater/homestead/.eggs/
+homestead.local_settings/local_settings.py usr/share/clearwater/homestead/templates/
+homestead-prov.monit usr/share/clearwater/homestead/templates/
 homestead.root/* .

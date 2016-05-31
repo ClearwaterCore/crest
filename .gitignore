@@ -2,10 +2,16 @@
 .installed.cfg
 *~
 /bin/
+/build-crest/
+/build-homer/
+/build-homestead_prov/
 _env
 bootstrap.py
 develop-eggs
 eggs
+.crest-eggs
+.homer-eggs
+.homestead_prov-eggs
 src/*.egg-info
 logs
 ./data
@@ -15,3 +21,4 @@ parts
 *.swp
 .coverage
 htmlcov/
+src/metaswitch/crest/tools/sstable_provisioning/*.class

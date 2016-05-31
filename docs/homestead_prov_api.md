@@ -10,46 +10,6 @@ All access must go via this API, rather than directly to the database.
 
 Make a GET request to this endpoint to check whether Homestead-prov is running. It will return 200 OK if so.
 
-## IMPI
-
-    /impi/<private ID>/digest
-
-Make a GET request to this URL to retrieve the digest of the specified private ID
-
-The URL takes an optional query parameter: `public_id=<public_id>` If specified a digest is only returned if the private ID is able to authenticate the public ID.
-
-Response:
-
-* 200 if the digest is found, returned as JSON: `{ "digest_ha1": "<DIGEST>" }`
-* 404 if the digest is not found.
-
-## IMPU
-
-    /impu/<public ID>
-
-Make a GET request to this URL to retrieve the IMS subscription document for this public ID
-
-Response:
-
-* 200 if the public ID is found, returned as an IMSSubscription XML document, e.g.:
-
-    <IMSSubscription>
-        <PrivateID>...</PrivateID>
-        <ServiceProfile>
-            <InitialFilterCriteria>
-                <TriggerPoint>...</SPT></TriggerPoint>
-                <ApplicationServer>
-                    <ServerName>...</ServerName>
-                </ApplicationServer>
-            </InitialFilterCriteria>
-            <PublicIdentity>
-                <Identity>...</Identity>
-            </PublicIdentity>
-        </ServiceProfile>
-    </IMSSubscription>
-
-* 404 if the public ID is not found.
-
 ## Private ID
 
     /private/<private ID>
@@ -222,7 +182,7 @@ Make a GET to this URL to list the private IDs that can authenticate the public 
 * 200 if the public IDs exists, returned as JSON: `{ "private_ids": ["<private-id-1>", "<private-id-2>"] }`
 * 404 if the public ID does not exist.
 
-`/public/?excludeuuids=[true|false]&chunk-proportion=N`
+`/public/?excludeuuids=[true|false]&chunk-proportion=N&chunk=M`
 
 Make a GET to this URL to list all public IDs provisioned on the system.
 
@@ -236,6 +196,11 @@ Parameters:
     result in a faster response, but will be less well-paced (with a higher risk of disrupting
     service), and as Homestead handles more data at once, results in higher memory usage. The value
     of 256 has proved to work well in testing.
+* chunk (integer, default unset) - If set, this API only returns this chunk (i.e. a fraction of
+    the total subscriber base).  Chunks are 0-indexed, and so run from `0` to
+    `chunk-proportion - 1` - e.g. if you have 10000 subscribers and set `chunk-proportion=1000`, a
+    query with `chunk=0` will return ~10 subscribers and a query with `chunk=1` will return another
+    ~10 subscribers.  If absent, this API returns all chunks.
 
 This API does a lot more work than the others, so it tends to be slower - as a rough guide, from
 testing on a 1-core VM:

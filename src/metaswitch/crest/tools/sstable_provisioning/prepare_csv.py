@@ -1,4 +1,4 @@
-#!/usr/share/clearwater/homer/env/bin/python
+#!/usr/share/clearwater/crest/env/bin/python
 
 # @file prepare_csv.py
 #
@@ -37,14 +37,11 @@
 #
 
 import sys, string, csv, traceback, uuid
-from metaswitch.crest import settings
 from metaswitch.common import utils
-from metaswitch.common import ifcs
+from metaswitch.common import ifcs, simservs
 from metaswitch.crest.tools.utils import create_imssubscription_xml
 
-with open(settings.XDM_DEFAULT_SIMSERVS_FILE, "rb") as simservs_file:
-    SIMSERVS = simservs_file.read()
-SIMSERVS = SIMSERVS.rstrip()
+SIMSERVS = simservs.default_simservs()
 
 USAGE = """
 Usage: prepare_csv.py <csv_file>
@@ -87,9 +84,9 @@ def standalone():
                     print 'Error: row %s contains <4 entries - ignoring' % row
 
         print "Bulk provisioning input created"
-        print "- BulkProvision %s homer" % (output_filename)
-        print "- BulkProvision %s homestead-local" % (output_filename)
-        print "- BulkProvision %s homestead-hss" % (output_filename)
+        print "- BulkProvision homer %s" % (output_filename)
+        print "- BulkProvision homestead-local %s" % (output_filename)
+        print "- BulkProvision homestead-hss %s" % (output_filename)
     except IOError as e:
         print "Failed to read/write to %s:" % (e.filename,)
         traceback.print_exc();
