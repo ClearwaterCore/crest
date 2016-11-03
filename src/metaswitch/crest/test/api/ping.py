@@ -34,23 +34,53 @@
 # under which the OpenSSL Project distributes the OpenSSL toolkit software,
 # as those licenses appear in the file LICENSE-OPENSSL.
 
-
 import unittest
 import mock
+from twisted.internet.defer import fail
+import telephus.protocol
 
 from metaswitch.crest.api import ping
+
 
 class TestPingHandler(unittest.TestCase):
     """
     Detailed, isolated unit tests of the PingHandler class.
     """
+    # It would be good to FV the failure case where the get request
+    # hangs waiting on Cassandra to respond, but that's hard to
+    # simulate reliably here.
     def setUp(self):
         unittest.TestCase.setUp(self)
         self.app = mock.MagicMock()
         self.request = mock.MagicMock()
         self.handler = ping.PingHandler(self.app, self.request)
 
-    def test_get_mainline(self):
-        self.handler.finish = mock.MagicMock()
-        self.handler.get()
-        self.assertEquals(self.handler.finish.call_args[0][0], "OK")
+    @mock.patch('twisted.internet.defer.DeferredList',
+                autospec=True)
+    @mock.patch('metaswitch.crest.api.passthrough.PassthroughHandler',
+                autospec=True)
+    @mock.patch('telephus.protocol.ManagedCassandraClientFactory',
+                autospec=True)
+    def test_get_mainline(self,
+                          mock_client_factory,
+                          mock_passthrough_handler,
+                          mock_deferred_list):
+        """Test that the ping runs to completion in the mainline."""
+        # This test is designed to catch regressions where a change to
+        # the PassthroughHandler or library APIs would stop the ping
+        # from functioning in the mainline.
+        #
+        # Make sure there is at least one (fake) connection to Cassandra, to
+        # exercise the main logic, and check that only real methods are
+        # called.
+        mock_passthrough_handler.cass_factories.values.return_value = [
+            telephus.protocol.ManagedCassandraClientFactory(),
+        ]
+        mock_deferred_list.return_value = fail(Exception())
+
+        # Insert a mock so that we can extract the value that finish
+        # was called with.
+        with mock.patch.object(self.handler, 'finish') as mock_finish:
+            self.handler.get()
+
+        self.assertEquals(mock_finish.call_args[0][0], "OK")
