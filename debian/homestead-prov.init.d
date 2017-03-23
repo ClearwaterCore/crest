@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # @file homestead-prov.init.d
 #
@@ -50,7 +50,7 @@ DESC=homestead-prov        # Introduce a short description here
 NAME=homestead-prov       # Introduce the short server's name here
 DAEMON=/usr/share/clearwater/crest/env/bin/python # Introduce the server's location here
 DAEMON_ARGS="-m metaswitch.crest.main --worker-processes 1"
-DAEMON_DIR=/usr/share/clearwater/homestead/
+DAEMON_DIR=/usr/share/clearwater/homestead
 PIDFILE=/var/run/$NAME.pid
 SCRIPTNAME=/etc/init.d/$NAME
 
@@ -72,6 +72,8 @@ SCRIPTNAME=/etc/init.d/$NAME
 #
 get_settings()
 {
+  log_level=2
+
   . /etc/clearwater/config
 
   if [ ! -z "$signaling_namespace" ]
@@ -89,7 +91,7 @@ get_daemon_args()
   # Get the settings
   get_settings
 
-  DAEMON_ARGS="$DAEMON_ARGS $signaling_opt"
+  DAEMON_ARGS="$DAEMON_ARGS $signaling_opt --log-level $log_level"
 
   export CREST_SETTINGS=/usr/share/clearwater/homestead/local_settings.py
   export PYTHONPATH=/usr/share/clearwater/homestead/python/packages
@@ -155,8 +157,33 @@ do_abort()
   #   other if a failure occurred
   start-stop-daemon --stop --quiet --retry=USR1/5/TERM/30/KILL/5 --pidfile $PIDFILE --exec $DAEMON
   RETVAL="$?"
+  # If the abort failed, it may be because the PID in PIDFILE doesn't match the right process
+  # In this window condition, we may not recover, so remove the PIDFILE to get it running
+  if [ $RETVAL != 0 ]; then
+    rm -f $PIDFILE
+  fi
   return "$RETVAL"
 }
+
+# There should only be at most one homestead-prov process, and it should be the one in /var/run/homestead-prov.pid.
+# Sanity check this, and kill and log any leaked ones.
+if [ -f $PIDFILE ] ; then
+  leaked_pids=$(pgrep -f "^$DAEMON" | grep -v $(cat $PIDFILE))
+else
+  leaked_pids=$(pgrep -f "^$DAEMON")
+fi
+if [ -n "$leaked_pids" ] ; then
+  for pid in $leaked_pids ; do
+    # Homer and Homestead-prov run the same daemon, but in different working directories
+    # Make sure this is actually a leaked process by checking the working directory matches
+    # our expectations, and we aren't killing the wrong things
+    working_dir=$(pwdx $pid)
+    if grep $DAEMON_DIR <<< $working_dir ; then
+      logger -p daemon.error -t $NAME Found leaked homestead-prov $pid \(correct is $(cat $PIDFILE)\) - killing $pid
+      kill -9 $pid
+    fi
+  done
+fi
 
 case "$1" in
   start)
@@ -184,7 +211,7 @@ case "$1" in
     esac
     ;;
   status)
-    status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
+    status_of_proc -p "$PIDFILE" "$DAEMON" "$NAME" && exit 0 || exit $?
     ;;
   restart|force-reload)
     log_daemon_msg "Restarting $DESC" "$NAME"
